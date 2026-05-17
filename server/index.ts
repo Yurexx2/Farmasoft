@@ -33,16 +33,20 @@ const PREFIX = BASE_PATH ? `/${BASE_PATH}` : ''
 
 app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:3001'] }))
 app.use(express.json({ strict: false, limit: '50mb' }))
-app.use((_req, res, next) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8')
-  next()
-})
 
 // Always-on health check at the true root — Render hits this regardless of BASE_PATH.
 app.get('/healthz', (_req, res) => res.json({ ok: true }))
 
-// All API routes under <prefix>/api
+// All API routes under <prefix>/api.
+// The JSON Content-Type is scoped to the API router only — applying it globally
+// would also tag the static HTML/JS/CSS as application/json (express.static and
+// sendFile won't override an already-set Content-Type), so the browser would
+// render index.html as raw text instead of a page.
 const api = express.Router()
+api.use((_req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  next()
+})
 api.use(apiAuth)
 api.use('/jobs', jobsRouter)
 api.use('/candidates', candidatesRouter)
