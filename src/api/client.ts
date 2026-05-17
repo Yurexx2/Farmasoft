@@ -199,6 +199,74 @@ export const messagingApi = {
     req<Array<{ channel: string; ok: boolean; id?: string; error?: string }>>(`/messaging/send/${candidateId}`, { method: 'POST', ...body(params) }),
 }
 
+// ─── Telegram recruiting bot ─────────────────────────────────────────────
+export const telegramApi = {
+  settings: () => req<TgBotSettings>('/telegram/settings'),
+  saveSettings: (s: Partial<Pick<TgBotSettings, 'enabled' | 'mode' | 'calendlyUrl'>>) =>
+    req<TgBotSettings>('/telegram/settings', { method: 'POST', ...body(s) }),
+  conversations: () => req<TgConversation[]>('/telegram/conversations'),
+  conversation: (id: number) =>
+    req<{ conversation: TgConversationDetail; messages: TgMessage[] }>(`/telegram/conversations/${id}`),
+  send: (id: number, text: string) =>
+    req<{ ok: boolean }>(`/telegram/conversations/${id}/send`, { method: 'POST', ...body({ text }) }),
+  toggleBot: (id: number, enabled: boolean) =>
+    req<{ ok: boolean }>(`/telegram/conversations/${id}/bot`, { method: 'POST', ...body({ enabled }) }),
+  setStatus: (id: number, status: string) =>
+    req<{ ok: boolean }>(`/telegram/conversations/${id}/status`, { method: 'POST', ...body({ status }) }),
+  regenerate: (id: number) =>
+    req<{ ok: boolean }>(`/telegram/conversations/${id}/draft`, { method: 'POST' }),
+  remove: (id: number) =>
+    req<{ ok: boolean }>(`/telegram/conversations/${id}`, { method: 'DELETE' }),
+  approveDraft: (msgId: number, text?: string) =>
+    req<{ ok: boolean }>(`/telegram/messages/${msgId}/approve`, { method: 'POST', ...body({ text }) }),
+  discardDraft: (msgId: number) =>
+    req<{ ok: boolean }>(`/telegram/messages/${msgId}/discard`, { method: 'POST' }),
+}
+
+export interface TgBotSettings {
+  enabled: boolean
+  mode: 'review' | 'auto'
+  calendlyUrl: string
+  connected?: boolean
+}
+
+export interface TgConversation {
+  id: number
+  candidate_id: number | null
+  job_id: number | null
+  status: string
+  bot_enabled: number
+  turn_count: number
+  created_at: string
+  updated_at: string
+  candidate_name: string | null
+  candidate_full_name: string | null
+  candidate_role: string | null
+  candidate_photo: string | null
+  job_title: string | null
+  last_text: string | null
+  last_direction: 'in' | 'out' | null
+  last_at: string | null
+  draft_count: number
+}
+
+export interface TgConversationDetail extends TgConversation {
+  peer_id: string | null
+  peer_phone: string | null
+  candidate_phone: string | null
+  last_seen_message_id: number
+}
+
+export interface TgMessage {
+  id: number
+  direction: 'in' | 'out'
+  sender: 'candidate' | 'bot' | 'alena'
+  text: string
+  status: 'sent' | 'pending_review' | 'discarded'
+  tg_message_id: number | null
+  created_at: string
+}
+
 export interface MessagingStatus {
   whatsapp: { configured: boolean; connected?: boolean; identity?: string; error?: string }
   viber:    { configured: boolean; connected?: boolean; identity?: string; error?: string }

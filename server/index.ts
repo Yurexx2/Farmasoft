@@ -17,13 +17,15 @@ import robotaRouter, { runFollowUps, runFullSync } from './routes/robota'
 import messagingRouter from './routes/messaging'
 import salaryRouter from './routes/salary'
 import adminRouter from './routes/admin'
+import telegramBotRouter from './routes/telegram'
 // work.ua integration disabled — their employer dashboard sits behind a
 // Cloudflare bot-management challenge with no interactive element, which
 // blocks any automated browser. Source kept dormant in routes/workua.ts +
 // lib/workua/ in case work.ua ever drops the protection.
 // import workuaRouter from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
-import { telegramIsConnected } from './lib/messaging/telegram'
+import { telegramIsConnected, onTelegramInbound } from './lib/messaging/telegram'
+import { handleInbound, recoverMissed } from './lib/telegram-bot/bot'
 import { apiAuth } from './middleware/auth'
 
 const app = express()
@@ -64,6 +66,7 @@ api.use('/robota', robotaRouter)
 api.use('/messaging', messagingRouter)
 api.use('/salary', salaryRouter)
 api.use('/admin', adminRouter)
+api.use('/telegram', telegramBotRouter)
 // api.use('/workua', workuaRouter)  // disabled — see import note above
 app.use(`${PREFIX}/api`, api)
 
@@ -123,8 +126,14 @@ app.listen(PORT, () => {
     runFullSync().catch(e => console.error('[startup full-sync]', (e as Error).message))
   }
 
-  // Reload Telegram session if previously authenticated
-  reloadTelegramSession().catch(e => console.error('[startup telegram]', (e as Error).message))
+  // Route every inbound Telegram private message into the recruiting bot.
+  onTelegramInbound(handleInbound)
+
+  // Reload Telegram session if previously authenticated, then recover any
+  // candidate replies that arrived while the server was offline.
+  reloadTelegramSession()
+    .then(() => recoverMissed())
+    .catch(e => console.error('[startup telegram]', (e as Error).message))
 })
 
 function startCron() {
@@ -162,6 +171,11 @@ function startCron() {
       if (tg?.value && !telegramIsConnected()) {
         console.log('[cron] Telegram disconnected — reloading saved session')
         await reloadTelegramSession().catch(e => console.error('[cron telegram]', (e as Error).message))
+      }
+      // Safety net: even when the socket is healthy, sweep for inbound
+      // messages the live event handler may have missed (network blips).
+      if (telegramIsConnected()) {
+        await recoverMissed().catch(e => console.error('[cron tg-recover]', (e as Error).message))
       }
     } catch (e) {
       console.error('[cron] Telegram health error:', (e as Error).message)

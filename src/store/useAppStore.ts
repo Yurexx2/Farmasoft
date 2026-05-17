@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { Lang } from '../i18n'
 
-export type Page = 'dashboard' | 'jobs'
+export type Page = 'dashboard' | 'jobs' | 'telegram'
 
 interface AppStore {
   currentPage: Page

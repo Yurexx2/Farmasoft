@@ -2,6 +2,7 @@ import { getDb } from '../../db'
 import { whatsappSend, whatsappTest, WhatsAppCreds } from './whatsapp'
 import { viberSend, viberTest, ViberCreds } from './viber'
 import { telegramSend, telegramReloadFromSession, telegramIsConnected, TelegramCreds } from './telegram'
+import { startConversation } from '../telegram-bot/bot'
 
 export type Channel = 'telegram' | 'whatsapp' | 'viber' | 'email'
 export type ChannelStatus = 'connected' | 'disconnected'
@@ -130,6 +131,20 @@ export async function sendToCandidate(opts: {
         else {
           const send = await telegramSend(phone, opts.message)
           r = { channel, ok: send.ok, id: send.messageId ? String(send.messageId) : undefined, error: send.error }
+          // Open a bot conversation thread so the chatbot can take over the
+          // moment the candidate replies.
+          if (send.ok && send.peerId && send.messageId) {
+            try {
+              startConversation({
+                candidateId: opts.candidateId,
+                jobId: (candidate.job_id as number) ?? null,
+                peerId: send.peerId,
+                peerPhone: phone,
+                firstMessage: opts.message,
+                tgMessageId: send.messageId,
+              })
+            } catch (e) { console.error('[tg-bot startConversation]', (e as Error).message) }
+          }
         }
       } else if (channel === 'whatsapp') {
         const creds = getWhatsAppCreds()
