@@ -77,7 +77,7 @@ interface PendingAuth {
 }
 let pendingAuth: PendingAuth | null = null
 
-export async function telegramReloadFromSession(creds: TelegramCreds): Promise<{ ok: boolean; me?: { username?: string; firstName?: string }; error?: string }> {
+export async function telegramReloadFromSession(creds: TelegramCreds): Promise<{ ok: boolean; me?: { username?: string; firstName?: string }; error?: string; fatal?: boolean }> {
   if (!creds.session) return { ok: false, error: 'No session string saved' }
   try {
     // Drop any stale client still held in memory before opening a fresh one.
@@ -104,7 +104,12 @@ export async function telegramReloadFromSession(creds: TelegramCreds): Promise<{
     attachInboundHandler(client)
     return { ok: true, me: { username: me.username, firstName: me.firstName } }
   } catch (err: unknown) {
-    return { ok: false, error: (err as Error).message }
+    const msg = (err as Error).message || ''
+    // AUTH_KEY_DUPLICATED / AUTH_KEY_UNREGISTERED → the session is revoked for
+    // good (Telegram kills a key used from two places at once). Retrying is
+    // pointless; the caller must drop it and re-authenticate.
+    const fatal = /AUTH_KEY_DUPLICATED|AUTH_KEY_UNREGISTERED|SESSION_REVOKED/i.test(msg)
+    return { ok: false, error: msg, fatal }
   }
 }
 

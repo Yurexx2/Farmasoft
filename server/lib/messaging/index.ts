@@ -91,6 +91,15 @@ export async function channelsStatus(): Promise<Record<Channel, { configured: bo
 // seconds after a Render deploy. Once connected, GramJS keeps the socket alive
 // on its own, so the only thing that ever drops it is a process restart.
 export async function reloadTelegramSession(): Promise<void> {
+  // A Telegram session (auth key) may only be live in ONE place at a time —
+  // if the same session connects from two servers at once, Telegram revokes
+  // it permanently (AUTH_KEY_DUPLICATED). So only the production server
+  // (Render) ever auto-connects; a local `npm run dev` leaves it untouched.
+  // Set TELEGRAM_FORCE=1 to override (only if production is stopped).
+  if (process.env.NODE_ENV !== 'production' && process.env.TELEGRAM_FORCE !== '1') {
+    console.log('[telegram] auto-connect skipped — not the production server')
+    return
+  }
   const creds = getTelegramCreds()
   if (!creds || !creds.session) { console.log('[telegram] No saved session'); return }
   if (telegramIsConnected()) return  // already healthy — nothing to do
@@ -99,6 +108,13 @@ export async function reloadTelegramSession(): Promise<void> {
     const result = await telegramReloadFromSession(creds)
     if (result.ok) {
       console.log(`[telegram] Connected as ${result.me?.firstName} (@${result.me?.username || creds.phoneNumber})`)
+      return
+    }
+    if (result.fatal) {
+      // The session is revoked — drop it so the UI prompts a one-time
+      // re-authentication instead of retrying a dead key forever.
+      console.error('[telegram] Session revoked (AUTH_KEY_DUPLICATED) — re-authentication required')
+      deleteSettings(['telegram_session'])
       return
     }
     console.warn(`[telegram] reload attempt ${attempt}/5 failed: ${result.error}`)
