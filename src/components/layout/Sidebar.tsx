@@ -446,6 +446,18 @@ function TelegramConnectModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Pre-fill the saved api_id / api_hash / phone so re-authentication only
+  // needs the login code.
+  useEffect(() => {
+    messagingApi.telegram.creds().then(r => {
+      if (r.data) {
+        setApiId(String(r.data.apiId))
+        setApiHash(r.data.apiHash)
+        setPhone(r.data.phone)
+      }
+    })
+  }, [])
+
   async function start() {
     setLoading(true); setError('')
     const r = await messagingApi.telegram.start({ apiId: parseInt(apiId), apiHash, phone })

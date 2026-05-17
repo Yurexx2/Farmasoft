@@ -182,6 +182,7 @@ export const messagingApi = {
     disconnect: () => req<{ ok: boolean }>('/messaging/viber/disconnect', { method: 'POST' }),
   },
   telegram: {
+    creds: () => req<{ apiId: number; apiHash: string; phone: string } | null>('/messaging/telegram/creds'),
     start: (params: { apiId: number; apiHash: string; phone: string }) =>
       req<{ ok: boolean; message?: string }>('/messaging/telegram/start', { method: 'POST', ...body(params) }),
     code: (code: string) =>

@@ -3,7 +3,7 @@ import {
   channelsStatus,
   getWhatsAppCreds, saveWhatsAppCreds, clearWhatsAppCreds,
   getViberCreds,    saveViberCreds,    clearViberCreds,
-  saveTelegramCreds, clearTelegramCreds,
+  saveTelegramCreds, clearTelegramCreds, getTelegramCreds,
   sendToCandidate, Channel, reloadTelegramSession,
 } from '../lib/messaging'
 import { whatsappTest, whatsappSend } from '../lib/messaging/whatsapp'
@@ -68,6 +68,14 @@ router.post('/viber/disconnect', (_req: Request, res: Response) => {
 })
 
 // ─── TELEGRAM (compte personnel via GramJS) ────────────────────────────────
+// Saved api_id / api_hash / phone (no session) — lets the connect modal
+// pre-fill so re-authentication only needs the login code.
+router.get('/telegram/creds', (_req: Request, res: Response) => {
+  const c = getTelegramCreds()
+  if (!c) return res.json({ data: null })
+  res.json({ data: { apiId: c.apiId, apiHash: c.apiHash, phone: c.phoneNumber } })
+})
+
 router.post('/telegram/start', async (req: Request, res: Response) => {
   const { apiId, apiHash, phone } = req.body as { apiId: number | string; apiHash: string; phone: string }
   if (!apiId || !apiHash || !phone) return res.json({ error: 'api_id, api_hash et numéro requis' })
