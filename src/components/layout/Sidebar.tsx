@@ -706,6 +706,20 @@ export function Sidebar() {
       className={`sidebar${isMobile && sidebarOpen ? ' sidebar-mobile-open' : ''}`}
       style={{ position: 'relative' }}
     >
+      {/* Mobile drawer — explicit close button (the hamburger is hidden behind it) */}
+      {isMobile && (
+        <button
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close menu"
+          style={{
+            alignSelf: 'flex-end', background: 'var(--surface-2)', border: 'none',
+            width: 34, height: 34, borderRadius: '50%', cursor: 'pointer',
+            color: 'var(--text-2)', fontSize: 18, lineHeight: '1',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 10, flexShrink: 0,
+          }}
+        >×</button>
+      )}
       <nav className="sidebar-nav">
         {navItems.map(item => (
           <div
