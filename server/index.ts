@@ -68,7 +68,9 @@ app.use(`${PREFIX}/api`, api)
 
 if (process.env.NODE_ENV === 'production') {
   // Serve the built frontend under the same prefix the assets were built with.
-  app.use(PREFIX || '/', express.static(path.join(process.cwd(), 'dist')))
+  // index:false so express.static does NOT auto-serve index.html — every HTML
+  // request must fall through to the route below, which injects the API key.
+  app.use(PREFIX || '/', express.static(path.join(process.cwd(), 'dist'), { index: false }))
 
   // Inject the API key into index.html at request time. This makes the key a
   // runtime concern (the server is the single source of truth) instead of a
