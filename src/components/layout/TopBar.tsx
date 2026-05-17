@@ -46,7 +46,7 @@ export function TopBar() {
           {iconMenu}
         </button>
         {sidebarOpen && (
-          <img src="/logo.svg" alt="Farmasoft" style={{ height: 34, width: 'auto', display: 'block' }} />
+          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Farmasoft" style={{ height: 34, width: 'auto', display: 'block' }} />
         )}
       </div>
 

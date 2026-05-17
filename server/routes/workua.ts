@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import {
-  workuaStartLogin, workuaLoginState, workuaCheckSession, workuaHasSession,
-  workuaClearSession, workuaOpenContext,
+  workuaStartLogin, workuaFlowState, workuaCheckSession, workuaHasProfile,
+  workuaClearProfile, workuaScrapeVacancies, workuaInspect, WorkuaVacancy,
 } from '../lib/workua/browser'
 import { getDb } from '../db'
 
@@ -15,21 +15,27 @@ function getSetting(key: string): string {
   return row?.value || ''
 }
 
-// ─── GET /workua/status — is a work.ua session connected & valid ─────────────
+// ─── Background operation result store ───────────────────────────────────────
+let lastVacancies: WorkuaVacancy[] = []
+let lastInspect: unknown = null
+
+// ─── GET /workua/status ──────────────────────────────────────────────────────
 router.get('/status', async (_req: Request, res: Response) => {
   try {
-    if (!workuaHasSession()) return res.json({ data: { connected: false } })
+    if (!workuaHasProfile()) return res.json({ data: { connected: false } })
     const check = await workuaCheckSession()
-    res.json({ data: { connected: check.valid, identity: check.identity } })
+    res.json({ data: check })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })
   }
 })
 
-// ─── POST /workua/login — open a Chromium window and auto-fill credentials ───
-// Non-blocking: launches the browser, auto-submits the login form, returns
-// immediately. The frontend polls /workua/login-state to follow progress.
-// Credentials fall back to the last saved pair when omitted.
+// ─── GET /workua/flow-state — poll any in-progress login/sync ────────────────
+router.get('/flow-state', (_req: Request, res: Response) => {
+  res.json({ data: workuaFlowState() })
+})
+
+// ─── POST /workua/login — open Chromium, auto-fill, human solves reCAPTCHA ───
 router.post('/login', (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string }
   const useEmail = email || getSetting('workua_email')
@@ -43,38 +49,48 @@ router.post('/login', (req: Request, res: Response) => {
   res.json({ data: { started: true } })
 })
 
-// ─── GET /workua/login-state — poll the in-progress login flow ───────────────
-router.get('/login-state', (_req: Request, res: Response) => {
-  res.json({ data: workuaLoginState() })
+// ─── POST /workua/sync — scrape employer vacancies (semi-manual) ─────────────
+// Non-blocking: starts the scrape; the recruiter solves Cloudflare if prompted.
+// Poll /flow-state for progress, then GET /sync-result for the data.
+router.post('/sync', (_req: Request, res: Response) => {
+  const state = workuaFlowState().state
+  if (state === 'working' || state === 'awaiting_human') {
+    return res.json({ error: 'Opération work.ua déjà en cours' })
+  }
+  void (async () => {
+    try {
+      lastVacancies = await workuaScrapeVacancies()
+    } catch { /* flow state already reflects the failure */ }
+  })()
+  res.json({ data: { started: true } })
+})
+
+router.get('/sync-result', (_req: Request, res: Response) => {
+  res.json({ data: { vacancies: lastVacancies } })
 })
 
 // ─── POST /workua/disconnect ─────────────────────────────────────────────────
 router.post('/disconnect', (_req: Request, res: Response) => {
-  workuaClearSession()
+  workuaClearProfile()
   res.json({ data: { ok: true } })
 })
 
-// ─── GET /workua/diagnose — dump employer dashboard HTML for selector tuning ─
-// Temporary endpoint: lets us inspect the real work.ua DOM once a session
-// exists, so the scraper selectors can be written against actual markup.
-router.get('/diagnose', async (_req: Request, res: Response) => {
-  const opened = await workuaOpenContext()
-  if (!opened) return res.json({ error: 'Pas de session work.ua' })
-  const { browser, context } = opened
-  try {
-    const page = await context.newPage()
-    const target = 'https://www.work.ua/employer/'
-    await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    await page.waitForTimeout(2000)
-    const url = page.url()
-    const title = await page.title()
-    const html = await page.content()
-    await browser.close()
-    res.json({ data: { url, title, htmlLength: html.length, html: html.slice(0, 60000) } })
-  } catch (e: unknown) {
-    try { await browser.close() } catch { /* ignore */ }
-    res.json({ error: (e as Error).message })
+// ─── Inspection endpoints (selector tuning) ──────────────────────────────────
+router.post('/inspect', (req: Request, res: Response) => {
+  const url = (req.body?.url as string) || 'https://www.work.ua/employer/my/jobs/'
+  const state = workuaFlowState().state
+  if (state === 'working' || state === 'awaiting_human') {
+    return res.json({ error: 'Opération work.ua déjà en cours' })
   }
+  void (async () => {
+    try { lastInspect = await workuaInspect(url) }
+    catch (e) { lastInspect = { error: (e as Error).message } }
+  })()
+  res.json({ data: { started: true } })
+})
+
+router.get('/inspect-result', (_req: Request, res: Response) => {
+  res.json({ data: lastInspect })
 })
 
 export default router

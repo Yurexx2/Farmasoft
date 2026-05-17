@@ -9,8 +9,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Playwright Chromium + OS libraries (used for the work.ua scraper).
-RUN npx playwright install --with-deps chromium
+# (Playwright Chromium install removed — the work.ua scraper that needed it is
+# disabled. Re-add `RUN npx playwright install --with-deps chromium` here if the
+# work.ua integration is ever revived.)
 
 # Copy the rest of the source and build the Vite frontend into dist/.
 # VITE_API_SECRET must be present as a build env var for the frontend to

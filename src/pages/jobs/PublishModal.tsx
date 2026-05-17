@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { api, Job, PublicationFailure } from '../../api/client'
+import { useAppStore } from '../../store/useAppStore'
+import { T } from '../../i18n'
 
 interface Props {
   job: Job
@@ -12,6 +14,8 @@ const inputStyle: React.CSSProperties = {
 }
 
 export function PublishModal({ job, onClose }: Props) {
+  const { uiLang } = useAppStore()
+  const tp = T[uiLang].publish
   const [publishType, setPublishType] = useState('Business')
   const [workTypes, setWorkTypes] = useState<string[]>(['Office'])
   const [employmentTypes, setEmploymentTypes] = useState<string[]>(['FullTime'])
@@ -52,8 +56,8 @@ export function PublishModal({ job, onClose }: Props) {
     window.open('https://employer.robota.ua/my/services', '_blank', 'noopener,noreferrer')
   }
 
-  const WORK_TYPES   = [{ id: 'Office', label: 'Bureau' }, { id: 'Remote', label: 'Télétravail' }, { id: 'Hybrid', label: 'Hybride' }]
-  const EMP_TYPES    = [{ id: 'FullTime', label: 'Plein temps' }, { id: 'PartTime', label: 'Partiel' }, { id: 'ProjectBased', label: 'Projet' }]
+  const WORK_TYPES   = [{ id: 'Office', label: tp.workOffice }, { id: 'Remote', label: tp.workRemote }, { id: 'Hybrid', label: tp.workHybrid }]
+  const EMP_TYPES    = [{ id: 'FullTime', label: tp.empFull }, { id: 'PartTime', label: tp.empPart }, { id: 'ProjectBased', label: tp.empProject }]
   const PUB_TYPES    = ['Business', 'Optimum', 'Professional', 'Anonym']
 
   return (
@@ -65,7 +69,7 @@ export function PublishModal({ job, onClose }: Props) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Publier sur robota.ua</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{tp.title}</div>
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{job.title}</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-3)' }}>✕</button>
@@ -74,21 +78,21 @@ export function PublishModal({ job, onClose }: Props) {
         {result ? (
           <div>
             <div style={{ padding: '16px', borderRadius: 10, background: '#D0F0E4', color: '#2E9460', textAlign: 'center', marginBottom: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Publié avec succès !</div>
-              <div style={{ fontSize: 12 }}>ID robota.ua : <strong>{result.robota_vacancy_id}</strong></div>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{tp.successTitle}</div>
+              <div style={{ fontSize: 12 }}>{tp.successId} <strong>{result.robota_vacancy_id}</strong></div>
               <div style={{ fontSize: 11, marginTop: 4, color: '#2E9460' }}>
-                Le sync automatique est maintenant actif pour ce poste.
+                {tp.successSync}
               </div>
             </div>
             <button onClick={onClose} style={{
               width: '100%', padding: '10px', borderRadius: 10, background: 'var(--accent)',
               color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600,
-            }}>Fermer</button>
+            }}>{tp.close}</button>
           </div>
         ) : (
           <>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-2)' }}>Type de publication</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-2)' }}>{tp.pubType}</label>
               <div style={{ display: 'flex', gap: 6 }}>
                 {PUB_TYPES.map(t => (
                   <button key={t} onClick={() => setPublishType(t)} style={{
@@ -103,7 +107,7 @@ export function PublishModal({ job, onClose }: Props) {
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-2)' }}>Mode de travail</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-2)' }}>{tp.workMode}</label>
               <div style={{ display: 'flex', gap: 6 }}>
                 {WORK_TYPES.map(t => (
                   <button key={t.id} onClick={() => toggleArr(workTypes, t.id, setWorkTypes)} style={{
@@ -118,7 +122,7 @@ export function PublishModal({ job, onClose }: Props) {
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-2)' }}>Type d'emploi</label>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-2)' }}>{tp.empType}</label>
               <div style={{ display: 'flex', gap: 6 }}>
                 {EMP_TYPES.map(t => (
                   <button key={t.id} onClick={() => toggleArr(employmentTypes, t.id, setEmploymentTypes)} style={{
@@ -134,10 +138,10 @@ export function PublishModal({ job, onClose }: Props) {
 
             <div style={{ marginBottom: 18 }}>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'var(--text-2)' }}>
-                Email de réception des candidatures (optionnel)
+                {tp.contactEmailLabel}
               </label>
               <input value={contactEmail} onChange={e => setContactEmail(e.target.value)}
-                placeholder="hr@votrecompany.com (utilise le compte robota.ua par défaut)"
+                placeholder={tp.contactEmailPlaceholder}
                 style={inputStyle} />
             </div>
 
@@ -147,14 +151,10 @@ export function PublishModal({ job, onClose }: Props) {
                 border: '1px solid #FCD34D', marginBottom: 12,
               }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#78350F', marginBottom: 4 }}>
-                  Pas assez de crédits sur robota.ua
+                  {tp.creditsTitle}
                 </div>
                 <div style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5, marginBottom: 10 }}>
-                  Votre compte robota.ua n'a plus d'unités de publication
-                  {failure.publicationType ? <> de type « <strong>{failure.publicationType}</strong> »</> : null}.
-                  L'annonce <strong>est créée</strong> côté robota
-                  {failure.robota_vacancy_id ? <> (ID {failure.robota_vacancy_id})</> : null}
-                  {' '}— il suffit de recharger puis de cliquer Retry, pas besoin de tout refaire.
+                  {tp.creditsBody(failure.publicationType, failure.robota_vacancy_id)}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={openBuyCreditsTab} style={{
@@ -163,7 +163,7 @@ export function PublishModal({ job, onClose }: Props) {
                     border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 12,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   }}>
-                    Recharger sur robota.ua
+                    {tp.buyCredits}
                     <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M6 3h7v7M13 3L5 11M3 6v7h7" />
                     </svg>
@@ -173,7 +173,7 @@ export function PublishModal({ job, onClose }: Props) {
                     background: 'var(--surface-2)', color: 'var(--text-1)',
                     border: '1px solid var(--border)', cursor: loading ? 'wait' : 'pointer', fontWeight: 600, fontSize: 12,
                   }}>
-                    {loading ? 'Retry…' : 'Retry publication'}
+                    {loading ? tp.retrying : tp.retry}
                   </button>
                 </div>
               </div>
@@ -185,12 +185,11 @@ export function PublishModal({ job, onClose }: Props) {
               width: '100%', padding: '11px', borderRadius: 10, background: 'var(--accent)',
               color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
             }}>
-              {loading ? 'Publication en cours...' : 'Publier sur robota.ua'}
+              {loading ? tp.publishing : tp.publishBtn}
             </button>
 
             <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-3)', textAlign: 'center' }}>
-              Le titre, la description et le salaire sont synchronisés depuis Farmasoft.
-              Après publication, le sync automatique démarre.
+              {tp.footer}
             </div>
           </>
         )}

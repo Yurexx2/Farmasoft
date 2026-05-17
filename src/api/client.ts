@@ -1,5 +1,8 @@
-const BASE = '/api'
-const API_KEY = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_SECRET
+// import.meta.env.BASE_URL is the Vite `base` (e.g. '/' or '/farmasoft/hr/'),
+// so the API lives at <base>api — works at the domain root and under a sub-path.
+const env = (import.meta as unknown as { env: Record<string, string> }).env
+const BASE = `${env.BASE_URL || '/'}api`
+const API_KEY = env.VITE_API_SECRET
 
 async function req<T>(url: string, options?: RequestInit): Promise<{ data?: T; error?: string }> {
   try {

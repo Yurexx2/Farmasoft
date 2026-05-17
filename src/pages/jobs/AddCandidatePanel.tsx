@@ -10,13 +10,6 @@ const POPULAR_CITIES = [
   { id: 10, name: 'Вінниця' },  { id: 16, name: 'Полтава' },{ id: 6,  name: 'Донецьк' },
 ]
 
-const EXPERIENCE_OPTIONS = [
-  { label: 'Any',           value: undefined },
-  { label: 'No experience', value: 0 },
-  { label: '1 year+',       value: 1 },
-  { label: '2 years+',      value: 2 },
-  { label: '5 years+',      value: 3 },
-]
 
 // Map job.experience_years to the closest robota.ua experienceId
 function yearsToExperienceId(y: number | null | undefined): number | undefined {
@@ -36,6 +29,14 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
   const { uiLang } = useAppStore()
   const tap = T[uiLang].jobs.addPanel
   const [mode, setMode] = useState<'cvSearch' | 'cvImport'>('cvSearch')
+
+  const EXPERIENCE_OPTIONS = [
+    { label: tap.expAny,  value: undefined },
+    { label: tap.expNone, value: 0 },
+    { label: tap.exp1,    value: 1 },
+    { label: tap.exp2,    value: 2 },
+    { label: tap.exp5,    value: 3 },
+  ]
 
   // CV Search state — pre-filled from the position
   const [keywords, setKeywords] = useState(job.title || '')
@@ -69,7 +70,7 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
   }
 
   async function search(p = 0) {
-    if (!keywords.trim()) { setSearchError('Keywords required'); return }
+    if (!keywords.trim()) { setSearchError(tap.keywordsRequired); return }
     setSearching(true); setSearchError(''); setPage(p)
     const r = await api.robota.cvdbSearch({
       keywords, cityId,
@@ -90,12 +91,12 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
   async function openCv(c: Candidate) {
     const m = c.profile_url?.match(/\/cv\/(\d+)/)
     const resumeId = m ? parseInt(m[1]) : null
-    if (!resumeId) { alert('CV ID not found'); return }
+    if (!resumeId) { alert(tap.cvIdNotFound); return }
     if (!credits || credits.available <= 0) {
-      alert('No credits available. Purchase a pack on robota.ua.')
+      alert(tap.noCredits)
       return
     }
-    if (!confirm(`Open full CV?\n\nThis will use 1 credit.\nCredits remaining after: ${credits.available - 1}`)) return
+    if (!confirm(tap.confirmOpenCv(credits.available - 1))) return
 
     setOpeningId(c.id)
     const r = await api.robota.openCv(resumeId, job.id)
@@ -154,7 +155,7 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}>{iconClose}</button>
         </div>
         <div style={{ display: 'flex', gap: 0, background: 'var(--surface-2)', borderRadius: 10, padding: 3 }}>
-          {[['cvSearch', 'CV Search'], ['cvImport', tap.modeCV]].map(([v, l]) => (
+          {[['cvSearch', tap.modeSearchCv], ['cvImport', tap.modeCV]].map(([v, l]) => (
             <button key={v} onClick={() => setMode(v as 'cvSearch' | 'cvImport')} style={{
               flex: 1, background: mode === v ? 'var(--surface)' : 'none',
               border: 'none', borderRadius: 8, padding: '7px 0', fontSize: 12,
@@ -169,10 +170,10 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
             borderRadius: 8, fontSize: 11, color: '#1D4ED8',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
-            <span><strong>{credits.available}</strong> credits available</span>
+            <span>{tap.creditsAvailable(credits.available)}</span>
             {credits.expiresAt && (
               <span style={{ color: '#6B7280' }}>
-                expires {new Date(credits.expiresAt).toLocaleDateString()}
+                {tap.creditsExpires(new Date(credits.expiresAt).toLocaleDateString(T[uiLang].locale))}
               </span>
             )}
           </div>
@@ -185,25 +186,25 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
         {mode === 'cvSearch' && (
           <div>
             <div style={{ marginBottom: 12 }}>
-              <label className="form-label">Keywords</label>
+              <label className="form-label">{tap.keywords}</label>
               <input
                 className="form-input"
                 value={keywords}
                 onChange={e => setKeywords(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && search(0)}
-                placeholder="e.g. бухгалтер, водій, програміст"
+                placeholder={tap.keywordsPlaceholder}
               />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               <div>
-                <label className="form-label">City</label>
+                <label className="form-label">{tap.city}</label>
                 <select className="form-input" value={cityId} onChange={e => setCityId(+e.target.value)}>
                   {POPULAR_CITIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="form-label">Experience</label>
+                <label className="form-label">{tap.experience}</label>
                 <select className="form-input" value={experienceId ?? ''} onChange={e => setExperienceId(e.target.value !== '' ? +e.target.value : undefined)}>
                   {EXPERIENCE_OPTIONS.map(o => (
                     <option key={String(o.value)} value={o.value ?? ''}>{o.label}</option>
@@ -214,17 +215,17 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               <div>
-                <label className="form-label">Min salary (UAH)</label>
+                <label className="form-label">{tap.salaryMin}</label>
                 <input className="form-input" type="number" value={salaryFrom} onChange={e => setSalaryFrom(e.target.value)} placeholder="15000" />
               </div>
               <div>
-                <label className="form-label">Max salary (UAH)</label>
+                <label className="form-label">{tap.salaryMax}</label>
                 <input className="form-input" type="number" value={salaryTo} onChange={e => setSalaryTo(e.target.value)} placeholder="40000" />
               </div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label className="form-label">Number of results</label>
+              <label className="form-label">{tap.numResults}</label>
               <input
                 className="form-input"
                 type="number"
@@ -236,7 +237,7 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
                   if (isNaN(v)) setCount(1)
                   else setCount(Math.min(Math.max(v, 1), 500))
                 }}
-                placeholder="e.g. 50"
+                placeholder={tap.numResultsPlaceholder}
               />
             </div>
 
@@ -254,7 +255,7 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
                     <circle cx="6.5" cy="6.5" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/>
                   </svg>
               }
-              {searching ? 'Searching…' : 'Search robota.ua CV database'}
+              {searching ? tap.searching : tap.searchCvBtn}
             </button>
 
             {results.length > 0 && (
@@ -262,8 +263,8 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
                 <div className="flex items-center justify-between mb-12">
                   <p className="t-12 c-2" style={{ margin: 0 }}>
                     {total !== null
-                      ? `${results.length} shown out of ${total.toLocaleString()}`
-                      : `${results.length} candidates`}
+                      ? tap.shownOutOf(results.length, total.toLocaleString())
+                      : tap.candidatesCount(results.length)}
                   </p>
                   {total !== null && results.length < total && (
                     <button
@@ -272,7 +273,7 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
                       disabled={searching}
                       style={{ fontSize: 11 }}
                     >
-                      {searching ? '…' : 'Load more'}
+                      {searching ? '…' : tap.loadMore}
                     </button>
                   )}
                 </div>
@@ -308,14 +309,14 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
                           <div className="t-11 c-3 truncate">
                             {c.full_name ? c.role : c.location || '—'}
                             {c.salary_expectation > 0 && ` · ${c.salary_expectation.toLocaleString()} UAH`}
-                            {c.experience_years > 0 && ` · ${c.experience_years} yr`}
+                            {c.experience_years > 0 && ` · ${c.experience_years} ${tap.yrShort}`}
                           </div>
                         </div>
                         {isOpened ? (
                           <span style={{
                             fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 4,
                             background: '#DCFCE7', color: '#15803D', flexShrink: 0,
-                          }}>OPENED</span>
+                          }}>{tap.opened}</span>
                         ) : (
                           <button
                             onClick={() => openCv(c)}
@@ -326,7 +327,7 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
                               cursor: 'pointer', flexShrink: 0,
                               opacity: !credits || credits.available <= 0 ? 0.5 : 1,
                             }}>
-                            {openingId === c.id ? '…' : 'Open (1)'}
+                            {openingId === c.id ? '…' : tap.openOne}
                           </button>
                         )}
                       </div>

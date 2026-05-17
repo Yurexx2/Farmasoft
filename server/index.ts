@@ -15,12 +15,21 @@ import cvRouter from './routes/cv'
 import robotaRouter, { runFollowUps, runFullSync } from './routes/robota'
 import messagingRouter from './routes/messaging'
 import salaryRouter from './routes/salary'
-import workuaRouter from './routes/workua'
+// work.ua integration disabled — their employer dashboard sits behind a
+// Cloudflare bot-management challenge with no interactive element, which
+// blocks any automated browser. Source kept dormant in routes/workua.ts +
+// lib/workua/ in case work.ua ever drops the protection.
+// import workuaRouter from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
 import { apiAuth } from './middleware/auth'
 
 const app = express()
 const PORT = process.env.PORT || 3001
+
+// Farmasoft can be served at the domain root (default) or under a sub-path
+// (BASE_PATH=/farmasoft/hr behind a reverse proxy). Empty → root.
+const BASE_PATH = (process.env.BASE_PATH || '').trim().replace(/^\/+|\/+$/g, '')
+const PREFIX = BASE_PATH ? `/${BASE_PATH}` : ''
 
 app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:3001'] }))
 app.use(express.json({ strict: false, limit: '50mb' }))
@@ -28,25 +37,32 @@ app.use((_req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   next()
 })
-app.use('/api', apiAuth)
 
-app.use('/api/jobs', jobsRouter)
-app.use('/api/candidates', candidatesRouter)
-app.use('/api/messages', messagesRouter)
-app.use('/api/settings', settingsRouter)
-app.use('/api/analytics', analyticsRouter)
-app.use('/api/scraper', scraperRouter)
-app.use('/api/ai', aiRouter)
-app.use('/api/interviews', interviewsRouter)
-app.use('/api/cv', cvRouter)
-app.use('/api/robota', robotaRouter)
-app.use('/api/messaging', messagingRouter)
-app.use('/api/salary', salaryRouter)
-app.use('/api/workua', workuaRouter)
+// Always-on health check at the true root — Render hits this regardless of BASE_PATH.
+app.get('/healthz', (_req, res) => res.json({ ok: true }))
+
+// All API routes under <prefix>/api
+const api = express.Router()
+api.use(apiAuth)
+api.use('/jobs', jobsRouter)
+api.use('/candidates', candidatesRouter)
+api.use('/messages', messagesRouter)
+api.use('/settings', settingsRouter)
+api.use('/analytics', analyticsRouter)
+api.use('/scraper', scraperRouter)
+api.use('/ai', aiRouter)
+api.use('/interviews', interviewsRouter)
+api.use('/cv', cvRouter)
+api.use('/robota', robotaRouter)
+api.use('/messaging', messagingRouter)
+api.use('/salary', salaryRouter)
+// api.use('/workua', workuaRouter)  // disabled — see import note above
+app.use(`${PREFIX}/api`, api)
 
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(process.cwd(), 'dist')))
-  app.get('*', (_req, res) => {
+  // Serve the built frontend under the same prefix the assets were built with.
+  app.use(PREFIX || '/', express.static(path.join(process.cwd(), 'dist')))
+  app.get(`${PREFIX}/*`, (_req, res) => {
     res.sendFile(path.join(process.cwd(), 'dist', 'index.html'))
   })
 }

@@ -36,6 +36,8 @@ const iconFile = (
 // Profile Menu — large modal with all connections (robota.ua, channels, calendly)
 // ─────────────────────────────────────────────────────────────────────────
 function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { uiLang } = useAppStore()
+  const tc = T[uiLang].connections
   const [robotaConfig, setRobotaConfig] = useState<RobotaConfig | null>(null)
   const [channelStatus, setChannelStatus] = useState<MessagingStatus | null>(null)
   const [activeChannel, setActiveChannel] = useState<'robota' | 'telegram' | 'calendly' | 'email' | null>(null)
@@ -68,9 +70,9 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
           flexShrink: 0,
         }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: -0.2 }}>Connections</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: -0.2 }}>{tc.title}</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-3)' }}>
-              Manage your accounts and messaging channels
+              {tc.subtitle}
             </p>
           </div>
           <button onClick={onClose} style={{
@@ -86,31 +88,31 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
 
         {/* Body — scrollable */}
         <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
-          <SectionTitle>Source account</SectionTitle>
+          <SectionTitle>{tc.sourceAccount}</SectionTitle>
           <Card
             icon={iconRobota} brandColor="#1A4A8A"
             name="robota.ua"
-            subtitle="Source of vacancies and candidates"
+            subtitle={tc.robotaSubtitle}
             status={robotaConfig?.robota_configured ? 'connected' : 'disconnected'}
             identity={robotaConfig?.robota_email || undefined}
             onConnect={() => setActiveChannel('robota')}
             onDisconnect={async () => {
-              if (!confirm('Disconnect the robota.ua account?')) return
+              if (!confirm(tc.confirmRobota)) return
               await api.robota.disconnect()
               await refresh()
             }}
           />
 
-          <SectionTitle style={{ marginTop: 24 }}>Sending channels</SectionTitle>
+          <SectionTitle style={{ marginTop: 24 }}>{tc.sendingChannels}</SectionTitle>
           <Card
             icon={iconTelegram} brandColor="#229ED9"
             name="Telegram"
-            subtitle="Personal account"
+            subtitle={tc.telegramSubtitle}
             status={channelStatus?.telegram?.connected ? 'connected' : 'disconnected'}
             identity={channelStatus?.telegram?.identity}
             onConnect={() => setActiveChannel('telegram')}
             onDisconnect={async () => {
-              if (!confirm('Disconnect Telegram?')) return
+              if (!confirm(tc.confirmTelegram)) return
               await messagingApi.telegram.disconnect()
               await refresh()
             }}
@@ -118,34 +120,34 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
           <Card
             icon={iconViber} brandColor="#7360F2"
             name="Viber"
-            subtitle="Via TurboSMS"
+            subtitle={tc.viberSubtitle}
             status="disconnected"
             comingSoon
           />
           <Card
             icon={iconEmail} brandColor="#0078D4"
             name="Email"
-            subtitle="Gmail, Outlook 365, or any SMTP server"
+            subtitle={tc.emailSubtitle}
             status={channelStatus?.email?.configured ? 'connected' : 'disconnected'}
             identity={channelStatus?.email?.identity}
             onConnect={() => setActiveChannel('email')}
             onDisconnect={async () => {
-              if (!confirm('Disconnect email?')) return
+              if (!confirm(tc.confirmEmail)) return
               await api.robota.smtpDisconnect()
               await refresh()
             }}
           />
 
-          <SectionTitle style={{ marginTop: 24 }}>Meeting scheduling</SectionTitle>
+          <SectionTitle style={{ marginTop: 24 }}>{tc.meetingScheduling}</SectionTitle>
           <Card
             icon={iconCalendly} brandColor="#006BFF"
             name="Calendly"
-            subtitle="Booking URL injected automatically into messages"
+            subtitle={tc.calendlySubtitle}
             status={robotaConfig?.calendly_url ? 'connected' : 'disconnected'}
             identity={robotaConfig?.calendly_url || undefined}
             onConnect={() => setActiveChannel('calendly')}
             onDisconnect={async () => {
-              if (!confirm('Clear the Calendly link?')) return
+              if (!confirm(tc.confirmCalendly)) return
               await api.robota.saveConfig({ calendly_url: '' })
               await refresh()
             }}
@@ -219,6 +221,7 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
   comingSoon?: boolean
 }) {
   const { uiLang } = useAppStore()
+  const tc = T[uiLang].connections
   const ok = status === 'connected'
   return (
     <div style={{
@@ -245,7 +248,7 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
             <span style={{
               width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
               background: ok ? '#16A34A' : 'var(--text-3)',
-            }} title={ok ? 'Connected' : 'Not connected'} />
+            }} title={ok ? tc.connected : tc.notConnected} />
           )}
         </div>
         {identity ? (
@@ -272,7 +275,7 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
           }}
             onMouseEnter={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.color = '#DC2626'; e.currentTarget.style.borderColor = '#FCA5A5' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-          >Disconnect</button>
+          >{tc.disconnect}</button>
         ) : (
           <button onClick={onConnect} style={{
             fontSize: 12, padding: '7px 14px', borderRadius: 8, fontWeight: 600,
@@ -281,7 +284,7 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
           }}
             onMouseEnter={e => { e.currentTarget.style.opacity = '0.9' }}
             onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-          >Connect</button>
+          >{tc.connect}</button>
         )
       )}
     </div>
@@ -735,7 +738,7 @@ export function Sidebar() {
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{identity.name}</div>
             <div style={{ fontSize: 10, color: connected ? '#16A34A' : 'var(--text-3)', fontWeight: 500 }}>
-              {connected ? 'Connected' : 'Click to connect'}
+              {connected ? t.connections.connected : t.connections.clickToConnect}
             </div>
           </div>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-3)', opacity: 0.6 }}>

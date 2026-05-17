@@ -88,11 +88,7 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
       return s
     }
 
-    const headers = [
-      'ID', 'Full name', 'Role', 'Location', 'Email', 'Phone',
-      'Experience (yrs)', 'Expected salary (UAH)', 'Stage', 'Status',
-      'AI score', 'AI notes', 'Profile URL', 'Created at',
-    ]
+    const headers = tp.csvHeaders
     const rows = candidates.map(c => [
       c.id,
       c.full_name || c.initials || '',
@@ -166,7 +162,7 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
                         ? `${job.salary_min?.toLocaleString()} UAH`
                         : `${(job.salary_min || 0).toLocaleString()}–${(job.salary_max || 0).toLocaleString()} UAH`)
                     : null,
-                  `${candidates.length} total`,
+                  tp.totalCount(candidates.length),
                 ].filter(Boolean).join(' · ')}
               </p>
             </div>
@@ -194,8 +190,8 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
           borderBottom: '1px solid var(--border)',
         }}>
           {([
-            ['applicants', 'Applicants',  applicants.length],
-            ['sourced',    'Sourced',     sourced.length],
+            ['applicants', tp.applicants, applicants.length],
+            ['sourced',    tp.sourced,    sourced.length],
           ] as const).map(([id, label, n]) => (
             <button
               key={id}

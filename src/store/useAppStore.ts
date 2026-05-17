@@ -17,7 +17,7 @@ interface AppStore {
 export const useAppStore = create<AppStore>((set) => ({
   currentPage: 'dashboard',
   apiKeyConfigured: false,
-  uiLang: 'en',
+  uiLang: 'ua',
   sidebarOpen: true,
   setPage: (currentPage) => set({ currentPage }),
   setApiKeyConfigured: (apiKeyConfigured) => set({ apiKeyConfigured }),
