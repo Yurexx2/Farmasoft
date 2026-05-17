@@ -2,6 +2,7 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
+import fs from 'fs'
 import { getDb } from './db'
 import jobsRouter from './routes/jobs'
 import candidatesRouter from './routes/candidates'
@@ -68,8 +69,20 @@ app.use(`${PREFIX}/api`, api)
 if (process.env.NODE_ENV === 'production') {
   // Serve the built frontend under the same prefix the assets were built with.
   app.use(PREFIX || '/', express.static(path.join(process.cwd(), 'dist')))
+
+  // Inject the API key into index.html at request time. This makes the key a
+  // runtime concern (the server is the single source of truth) instead of a
+  // build-time one — so it never depends on VITE_API_SECRET being set during
+  // the Docker build, and changing API_SECRET never needs a frontend rebuild.
+  const indexPath = path.join(process.cwd(), 'dist', 'index.html')
+  const rawIndex = fs.readFileSync(indexPath, 'utf8')
   app.get(`${PREFIX}/*`, (_req, res) => {
-    res.sendFile(path.join(process.cwd(), 'dist', 'index.html'))
+    const key = process.env.API_SECRET || ''
+    const html = rawIndex.replace(
+      '</head>',
+      `<script>window.__FARMASOFT_API_KEY__=${JSON.stringify(key)}</script></head>`,
+    )
+    res.type('html').send(html)
   })
 }
 

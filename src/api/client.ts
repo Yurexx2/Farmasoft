@@ -2,7 +2,10 @@
 // so the API lives at <base>api — works at the domain root and under a sub-path.
 const env = (import.meta as unknown as { env: Record<string, string> }).env
 const BASE = `${env.BASE_URL || '/'}api`
-const API_KEY = env.VITE_API_SECRET
+// In production the server injects window.__FARMASOFT_API_KEY__ into index.html;
+// in local dev (Vite serves the front) we fall back to the build-time env var.
+const API_KEY = (window as unknown as { __FARMASOFT_API_KEY__?: string }).__FARMASOFT_API_KEY__
+  || env.VITE_API_SECRET
 
 async function req<T>(url: string, options?: RequestInit): Promise<{ data?: T; error?: string }> {
   try {
