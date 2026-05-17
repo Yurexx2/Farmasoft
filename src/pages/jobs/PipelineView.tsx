@@ -8,6 +8,7 @@ import { CandidateModal } from './CandidateModal'
 import { AddCandidatePanel } from './AddCandidatePanel'
 import { RobotaSyncModal } from './RobotaSyncModal'
 import { SalaryBanner, useJobSalary } from './SalaryBanner'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 
 export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) {
@@ -25,6 +26,8 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
   const [showRobotaSync, setShowRobotaSync] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const salary = useJobSalary(job.id)
+  const isMobile = useIsMobile()
+  const sectionGap = isMobile ? 8 : 12
 
   useEffect(() => {
     api.candidates.list(job.id).then(r => {
@@ -143,7 +146,7 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
       <div className="page-header" style={{ paddingBottom: 12, flexShrink: 0 }}>
-        <div className="flex items-center justify-between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: sectionGap, flexWrap: 'wrap', gap: 10 }}>
           <div className="flex items-center gap-16">
             <button onClick={onBack} style={{
               background: 'var(--surface-2)', border: 'none', borderRadius: 10,
@@ -180,13 +183,13 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
         </div>
 
         {/* Salary intelligence banner */}
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: sectionGap }}>
           <SalaryBanner jobId={job.id} state={salary} />
         </div>
 
         {/* Source tabs */}
         <div style={{
-          display: 'flex', gap: 0, marginBottom: 12,
+          display: 'flex', gap: 0, marginBottom: sectionGap,
           borderBottom: '1px solid var(--border)',
         }}>
           {([

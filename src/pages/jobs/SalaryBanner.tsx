@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { api, SalaryAnalysis, SalaryCacheMeta } from '../../api/client'
 import { useAppStore } from '../../store/useAppStore'
 import { T } from '../../i18n'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 export interface JobSalaryState {
   analysis: SalaryAnalysis | null
@@ -59,6 +60,7 @@ interface Props { jobId: number; state?: JobSalaryState }
 export function SalaryBanner({ jobId, state: stateProp }: Props) {
   const { uiLang } = useAppStore()
   const ts = T[uiLang].salary
+  const isMobile = useIsMobile()
   const ownState = useJobSalary(jobId)
   const state = stateProp ?? ownState
   const { analysis, meta, loading, refreshing, error, refresh } = state
@@ -99,6 +101,33 @@ export function SalaryBanner({ jobId, state: stateProp }: Props) {
 
   const o = analysis.overall
   const c = analysis.collection
+
+  // Compact single-row variant for mobile — keeps the candidate list visible.
+  if (isMobile) {
+    return (
+      <div style={{
+        padding: '8px 12px', background: 'var(--surface)', borderRadius: 10,
+        border: `1px solid ${meta.stale ? '#FCD34D' : 'var(--border)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      }}>
+        <div style={{ fontSize: 12, color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ color: 'var(--text-3)' }}>{ts.marketMedian}: </span>
+          <strong style={{ color: 'var(--text-1)' }}>{fmtFull(o.median)}</strong>
+          <span style={{ color: 'var(--text-3)' }}> · {fmtUAH(o.p25)}–{fmtUAH(o.p75)}</span>
+        </div>
+        <button onClick={refresh} disabled={refreshing} title={meta.stale ? ts.tooltipStale : ts.tooltipFresh} style={{
+          fontSize: 11, fontWeight: 500, padding: '4px 9px', flexShrink: 0,
+          background: meta.stale ? '#FCD34D' : 'var(--surface-2)',
+          color: meta.stale ? '#78350F' : 'var(--text-2)',
+          border: 'none', borderRadius: 7, cursor: refreshing ? 'wait' : 'pointer',
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+          {refreshing ? <span className="spinner" style={{ width: 10, height: 10 }} /> : ts.refresh}
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div style={{
       padding: '10px 14px', background: 'var(--surface)', borderRadius: 10,
