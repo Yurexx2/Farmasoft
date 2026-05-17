@@ -43,7 +43,6 @@ export function TelegramPage() {
   const [conversations, setConversations] = useState<TgConversation[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
-  const [reconnecting, setReconnecting] = useState(false)
   const autoTried = useRef(false)
 
   const loadConversations = useCallback(async () => {
@@ -62,10 +61,8 @@ export function TelegramPage() {
   // The userbot connection lives in the server's memory and is dropped on
   // every redeploy/restart, so the deployed site must reload it.
   const reconnect = useCallback(async () => {
-    setReconnecting(true)
     await messagingApi.telegram.reload()
     await loadSettings()
-    setReconnecting(false)
   }, [loadSettings])
 
   useEffect(() => {
@@ -95,23 +92,6 @@ export function TelegramPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <Header settings={settings} onChange={loadSettings} t={t} draftsTotal={draftsTotal} />
-
-      {!settings.connected && (
-        <div style={{
-          margin: '0 24px 12px', padding: '12px 16px', borderRadius: 10,
-          background: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E', fontSize: 13,
-          display: 'flex', alignItems: 'center', gap: 12,
-        }}>
-          <div style={{ flex: 1 }}>
-            <strong>{t.notConnected}</strong> — {t.notConnectedHint}
-          </div>
-          <button
-            className="btn btn-sm" disabled={reconnecting}
-            onClick={reconnect}
-            style={{ background: '#92400E', color: '#fff', border: 'none', flexShrink: 0 }}
-          >{reconnecting ? '…' : t.reconnect}</button>
-        </div>
-      )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: 0 }}>
         {/* Conversation list */}
