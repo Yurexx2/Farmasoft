@@ -163,8 +163,9 @@ function startCron() {
     }
   }, 6 * 60 * 60 * 1000)
 
-  // Telegram self-heal every 5 min — the GramJS socket lives in memory and
-  // drops on restart/network blips; reconnect from the saved session (no code).
+  // Telegram self-heal every 60 s — the GramJS socket lives in memory and is
+  // lost on every restart/redeploy. This keeps the account connected at all
+  // times, like email, by reconnecting from the saved session (no code).
   setInterval(async () => {
     try {
       const tg = db.prepare("SELECT value FROM settings WHERE key = 'telegram_session'").get() as { value: string } | undefined
@@ -172,13 +173,20 @@ function startCron() {
         console.log('[cron] Telegram disconnected — reloading saved session')
         await reloadTelegramSession().catch(e => console.error('[cron telegram]', (e as Error).message))
       }
-      // Safety net: even when the socket is healthy, sweep for inbound
-      // messages the live event handler may have missed (network blips).
+    } catch (e) {
+      console.error('[cron] Telegram health error:', (e as Error).message)
+    }
+  }, 60 * 1000)
+
+  // Inbound-message safety net every 5 min — sweeps for candidate replies the
+  // live event handler may have missed during a network blip.
+  setInterval(async () => {
+    try {
       if (telegramIsConnected()) {
         await recoverMissed().catch(e => console.error('[cron tg-recover]', (e as Error).message))
       }
     } catch (e) {
-      console.error('[cron] Telegram health error:', (e as Error).message)
+      console.error('[cron] Telegram recover error:', (e as Error).message)
     }
   }, 5 * 60 * 1000)
 }

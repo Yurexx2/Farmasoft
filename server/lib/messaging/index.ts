@@ -85,17 +85,26 @@ export async function channelsStatus(): Promise<Record<Channel, { configured: bo
   return out
 }
 
-// ─── Auto-reload Telegram session at server startup ─────────────────────────
+// ─── Auto-reload Telegram session ────────────────────────────────────────────
+// Re-establishes the live MTProto connection from the saved session — no code
+// needed. Retries a few times because the network is often flaky in the first
+// seconds after a Render deploy. Once connected, GramJS keeps the socket alive
+// on its own, so the only thing that ever drops it is a process restart.
 export async function reloadTelegramSession(): Promise<void> {
   const creds = getTelegramCreds()
   if (!creds || !creds.session) { console.log('[telegram] No saved session'); return }
-  console.log('[telegram] Reloading saved session…')
-  const result = await telegramReloadFromSession(creds)
-  if (result.ok) {
-    console.log(`[telegram] Reconnected as ${result.me?.firstName} (@${result.me?.username || creds.phoneNumber})`)
-  } else {
-    console.warn('[telegram] Session reload failed:', result.error)
+  if (telegramIsConnected()) return  // already healthy — nothing to do
+
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const result = await telegramReloadFromSession(creds)
+    if (result.ok) {
+      console.log(`[telegram] Connected as ${result.me?.firstName} (@${result.me?.username || creds.phoneNumber})`)
+      return
+    }
+    console.warn(`[telegram] reload attempt ${attempt}/5 failed: ${result.error}`)
+    if (attempt < 5) await new Promise(r => setTimeout(r, 4000))
   }
+  console.error('[telegram] Could not re-establish the session after 5 attempts')
 }
 
 // ─── Unified send: tries multiple channels in priority order ─────────────────

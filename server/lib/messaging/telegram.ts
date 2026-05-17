@@ -80,9 +80,18 @@ let pendingAuth: PendingAuth | null = null
 export async function telegramReloadFromSession(creds: TelegramCreds): Promise<{ ok: boolean; me?: { username?: string; firstName?: string }; error?: string }> {
   if (!creds.session) return { ok: false, error: 'No session string saved' }
   try {
+    // Drop any stale client still held in memory before opening a fresh one.
+    if (activeClient) {
+      try { await activeClient.disconnect() } catch { /* ignore */ }
+      activeClient = null
+    }
     const session = new StringSession(creds.session)
     const client = new TelegramClient(session, creds.apiId, creds.apiHash, {
-      connectionRetries: 3,
+      // High retry budget + auto-reconnect so a transient network blip never
+      // permanently drops the connection — only a process restart does.
+      connectionRetries: 100,
+      retryDelay: 2000,
+      autoReconnect: true,
       connection: ConnectionTCPObfuscated,
       useWSS: true,
     })
@@ -332,7 +341,12 @@ export async function telegramFetchSince(
 }
 
 export function telegramIsConnected(): boolean {
-  return activeClient !== null && activeCreds !== null
+  if (!activeClient || !activeCreds) return false
+  // `connected` reflects the live MTProto socket. A client object can linger
+  // in memory after its socket silently dies — checking only `activeClient`
+  // would wrongly report "connected" and stop the self-heal from running.
+  const live = (activeClient as unknown as { connected?: boolean }).connected
+  return live !== false
 }
 
 export function telegramGetActiveCreds(): TelegramCreds | null {
