@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, Job } from '../../api/client'
+import { api, Job, PublicationFailure } from '../../api/client'
 
 interface Props {
   job: Job
@@ -19,13 +19,14 @@ export function PublishModal({ job, onClose }: Props) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; robota_vacancy_id?: number } | null>(null)
   const [error, setError] = useState('')
+  const [failure, setFailure] = useState<PublicationFailure | null>(null)
 
   function toggleArr(arr: string[], val: string, set: (v: string[]) => void) {
     set(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val])
   }
 
   async function handlePublish() {
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setFailure(null)
     const r = await api.robota.publishVacancy(job.id, {
       publish_type: publishType,
       contact_email: contactEmail || undefined,
@@ -33,8 +34,22 @@ export function PublishModal({ job, onClose }: Props) {
       employment_types: employmentTypes,
     })
     setLoading(false)
+    if (r.publication_failure) setFailure(r.publication_failure)
     if (r.error) { setError(r.error); return }
     if (r.data) setResult(r.data)
+  }
+
+  async function handleRetry() {
+    setLoading(true); setError(''); setFailure(null)
+    const r = await api.robota.retryPublish(job.id)
+    setLoading(false)
+    if (r.publication_failure) setFailure(r.publication_failure)
+    if (r.error) { setError(r.error); return }
+    if (r.data) setResult(r.data)
+  }
+
+  function openBuyCreditsTab() {
+    window.open('https://employer.robota.ua/my/services', '_blank', 'noopener,noreferrer')
   }
 
   const WORK_TYPES   = [{ id: 'Office', label: 'Bureau' }, { id: 'Remote', label: 'Télétravail' }, { id: 'Hybrid', label: 'Hybride' }]
@@ -126,9 +141,45 @@ export function PublishModal({ job, onClose }: Props) {
                 style={inputStyle} />
             </div>
 
-            {error && (
+            {failure?.kind === 'insufficient_credits' ? (
+              <div style={{
+                padding: '12px 14px', borderRadius: 10, background: '#FEF3C7',
+                border: '1px solid #FCD34D', marginBottom: 12,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#78350F', marginBottom: 4 }}>
+                  Pas assez de crédits sur robota.ua
+                </div>
+                <div style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5, marginBottom: 10 }}>
+                  Votre compte robota.ua n'a plus d'unités de publication
+                  {failure.publicationType ? <> de type « <strong>{failure.publicationType}</strong> »</> : null}.
+                  L'annonce <strong>est créée</strong> côté robota
+                  {failure.robota_vacancy_id ? <> (ID {failure.robota_vacancy_id})</> : null}
+                  {' '}— il suffit de recharger puis de cliquer Retry, pas besoin de tout refaire.
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={openBuyCreditsTab} style={{
+                    flex: 1, padding: '9px 12px', borderRadius: 8,
+                    background: '#0E7C57', color: '#fff',
+                    border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 12,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}>
+                    Recharger sur robota.ua
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M6 3h7v7M13 3L5 11M3 6v7h7" />
+                    </svg>
+                  </button>
+                  <button onClick={handleRetry} disabled={loading} style={{
+                    flex: 1, padding: '9px 12px', borderRadius: 8,
+                    background: 'var(--surface-2)', color: 'var(--text-1)',
+                    border: '1px solid var(--border)', cursor: loading ? 'wait' : 'pointer', fontWeight: 600, fontSize: 12,
+                  }}>
+                    {loading ? 'Retry…' : 'Retry publication'}
+                  </button>
+                </div>
+              </div>
+            ) : error ? (
               <div style={{ padding: '8px 12px', borderRadius: 8, background: '#FFE5E5', color: '#C0392B', fontSize: 12, marginBottom: 12 }}>{error}</div>
-            )}
+            ) : null}
 
             <button onClick={handlePublish} disabled={loading} style={{
               width: '100%', padding: '11px', borderRadius: 10, background: 'var(--accent)',

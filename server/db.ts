@@ -3,10 +3,14 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 
-// Persist DB outside OneDrive sync zone — survives folder cleanups and OneDrive resets
-const STABLE_DATA_DIR = process.env.APPDATA
-  ? path.join(process.env.APPDATA, 'Farmasoft', 'data')
-  : path.join(os.homedir(), '.farmasoft', 'data')
+// Persist DB outside OneDrive sync zone — survives folder cleanups and OneDrive resets.
+// FARMASOFT_DATA_DIR overrides the location (used in production, e.g. a Render
+// persistent disk mounted at /data) so the SQLite file survives redeploys.
+const STABLE_DATA_DIR = process.env.FARMASOFT_DATA_DIR
+  ? process.env.FARMASOFT_DATA_DIR
+  : process.env.APPDATA
+    ? path.join(process.env.APPDATA, 'Farmasoft', 'data')
+    : path.join(os.homedir(), '.farmasoft', 'data')
 
 fs.mkdirSync(STABLE_DATA_DIR, { recursive: true })
 
@@ -115,6 +119,7 @@ export function getDb(): DatabaseSync {
   try { db.exec('ALTER TABLE candidates ADD COLUMN full_name TEXT') } catch { /* already exists */ }
   try { db.exec('ALTER TABLE candidates ADD COLUMN photo_url TEXT') } catch { /* already exists */ }
   try { db.exec('ALTER TABLE candidates ADD COLUMN birth_date TEXT') } catch { /* already exists */ }
+  try { db.exec('ALTER TABLE candidates ADD COLUMN updated_at DATETIME') } catch { /* already exists */ }
   try { db.exec('ALTER TABLE jobs ADD COLUMN robota_vacancy_id INTEGER') } catch { /* already exists */ }
   // Robota.ua-aligned fields (used at publication time)
   try { db.exec('ALTER TABLE jobs ADD COLUMN city_id INTEGER') } catch { /* already exists */ }
@@ -150,6 +155,13 @@ export function getDb(): DatabaseSync {
       decision TEXT DEFAULT 'pending',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS salary_analyses (
+      job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      keywords_used TEXT NOT NULL,
+      sample_size INTEGER NOT NULL,
+      result_json TEXT NOT NULL,
+      computed_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `)
 

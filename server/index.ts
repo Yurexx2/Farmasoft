@@ -14,6 +14,8 @@ import interviewsRouter from './routes/interviews'
 import cvRouter from './routes/cv'
 import robotaRouter, { runFollowUps, runFullSync } from './routes/robota'
 import messagingRouter from './routes/messaging'
+import salaryRouter from './routes/salary'
+import workuaRouter from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
 import { apiAuth } from './middleware/auth'
 
@@ -39,6 +41,8 @@ app.use('/api/interviews', interviewsRouter)
 app.use('/api/cv', cvRouter)
 app.use('/api/robota', robotaRouter)
 app.use('/api/messaging', messagingRouter)
+app.use('/api/salary', salaryRouter)
+app.use('/api/workua', workuaRouter)
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(process.cwd(), 'dist')))

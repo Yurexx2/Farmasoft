@@ -1,6 +1,7 @@
 import { TelegramClient, Api } from 'telegram'
 import { StringSession } from 'telegram/sessions'
 import { computeCheck } from 'telegram/Password'
+import { ConnectionTCPObfuscated } from 'telegram/network'
 
 export interface TelegramCreds {
   apiId: number
@@ -12,6 +13,21 @@ export interface TelegramCreds {
 // Singleton client (one user account = one persistent client)
 let activeClient: TelegramClient | null = null
 let activeCreds: TelegramCreds | null = null
+
+// Telegram web gateway hostnames (per DC) — reachable through corporate firewalls
+// that block direct MTProto IPs but allow HTTPS/WSS to *.web.telegram.org.
+// DC2 is the production DC for +380 (Ukraine) numbers.
+const WEB_DC: Record<number, string> = {
+  1: 'pluto.web.telegram.org',
+  2: 'venus.web.telegram.org',
+  3: 'aurora.web.telegram.org',
+  4: 'vesta.web.telegram.org',
+  5: 'flora.web.telegram.org',
+}
+const DEFAULT_WEB_DC_ID = 2
+function applyWebDC(session: StringSession, dcId = DEFAULT_WEB_DC_ID): void {
+  session.setDC(dcId, WEB_DC[dcId], 443)
+}
 
 // Pending auth state (in-memory, between phone-submit and code-submit)
 interface PendingAuth {
@@ -26,7 +42,11 @@ export async function telegramReloadFromSession(creds: TelegramCreds): Promise<{
   if (!creds.session) return { ok: false, error: 'No session string saved' }
   try {
     const session = new StringSession(creds.session)
-    const client = new TelegramClient(session, creds.apiId, creds.apiHash, { connectionRetries: 3 })
+    const client = new TelegramClient(session, creds.apiId, creds.apiHash, {
+      connectionRetries: 3,
+      connection: ConnectionTCPObfuscated,
+      useWSS: true,
+    })
     await client.connect()
     const isAuthorized = await client.isUserAuthorized()
     if (!isAuthorized) { await client.disconnect(); return { ok: false, error: 'Session expirée — reconnexion requise' } }
@@ -39,13 +59,17 @@ export async function telegramReloadFromSession(creds: TelegramCreds): Promise<{
   }
 }
 
-export async function telegramStartAuth(apiId: number, apiHash: string, phoneNumber: string): Promise<{ ok: boolean; error?: string }> {
+export async function telegramStartAuth(apiId: number, apiHash: string, phoneNumber: string): Promise<{ ok: boolean; error?: string; deliveryType?: string; nextType?: string; timeout?: number }> {
   try {
     // Cleanup any previous pending auth
     if (pendingAuth) { try { await pendingAuth.client.disconnect() } catch { /* ignore */ } pendingAuth = null }
 
     const session = new StringSession('')
-    const client = new TelegramClient(session, apiId, apiHash, { connectionRetries: 3 })
+    const client = new TelegramClient(session, apiId, apiHash, {
+      connectionRetries: 3,
+      connection: ConnectionTCPObfuscated,
+      useWSS: true,
+    })
     await client.connect()
 
     const sendCodeResult = await client.invoke(new Api.auth.SendCode({
@@ -53,19 +77,40 @@ export async function telegramStartAuth(apiId: number, apiHash: string, phoneNum
       apiId,
       apiHash,
       settings: new Api.CodeSettings({ allowFlashcall: false, currentNumber: false, allowAppHash: true }),
-    })) as { phoneCodeHash: string }
+    })) as { phoneCodeHash: string; type?: { className: string; length?: number }; nextType?: { className: string }; timeout?: number }
+
+    const deliveryType = sendCodeResult.type?.className?.replace(/^auth\.sentCodeType/i, '')
+    const nextType = sendCodeResult.nextType?.className?.replace(/^auth\.codeType/i, '')
+    console.log('[telegram] SendCode →', { deliveryType, nextType, timeout: sendCodeResult.timeout })
 
     pendingAuth = {
       client,
       creds: { apiId, apiHash, phoneNumber },
       phoneCodeHash: sendCodeResult.phoneCodeHash,
     }
-    return { ok: true }
+    return { ok: true, deliveryType, nextType, timeout: sendCodeResult.timeout }
   } catch (err: unknown) {
     const msg = (err as Error).message
     if (msg.includes('PHONE_NUMBER_INVALID')) return { ok: false, error: 'Numéro invalide (format +380...)' }
     if (msg.includes('API_ID_INVALID'))      return { ok: false, error: 'api_id ou api_hash invalide' }
     return { ok: false, error: msg }
+  }
+}
+
+export async function telegramResendCode(): Promise<{ ok: boolean; error?: string; deliveryType?: string; nextType?: string }> {
+  if (!pendingAuth) return { ok: false, error: 'Aucune authentification en cours' }
+  try {
+    const r = await pendingAuth.client.invoke(new Api.auth.ResendCode({
+      phoneNumber: pendingAuth.creds.phoneNumber,
+      phoneCodeHash: pendingAuth.phoneCodeHash,
+    })) as { phoneCodeHash: string; type?: { className: string }; nextType?: { className: string } }
+    pendingAuth.phoneCodeHash = r.phoneCodeHash
+    const deliveryType = r.type?.className?.replace(/^auth\.sentCodeType/i, '')
+    const nextType = r.nextType?.className?.replace(/^auth\.codeType/i, '')
+    console.log('[telegram] ResendCode →', { deliveryType, nextType })
+    return { ok: true, deliveryType, nextType }
+  } catch (err: unknown) {
+    return { ok: false, error: (err as Error).message }
   }
 }
 

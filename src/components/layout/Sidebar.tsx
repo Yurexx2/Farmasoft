@@ -5,6 +5,18 @@ import { api, RobotaConfig, messagingApi, MessagingStatus } from '../../api/clie
 
 interface NavItem { id: Page; label: string; icon: JSX.Element }
 
+// Derive a display name + initials from the connected robota.ua account email.
+// e.g. "alena.pryhodko@farmasoft.ua" → { name: "Alena Pryhodko", initials: "AP" }
+function identityFromEmail(email?: string): { name: string; initials: string } {
+  if (!email) return { name: 'User', initials: 'U' }
+  const local = email.split('@')[0]
+  const parts = local.split(/[._-]+/).filter(Boolean)
+  if (parts.length === 0) return { name: 'User', initials: 'U' }
+  const name = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
+  const initials = parts.slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('')
+  return { name, initials: initials || 'U' }
+}
+
 const iconDashboard = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="2" width="5.5" height="5.5" rx="1.5" />
@@ -26,7 +38,7 @@ const iconFile = (
 function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [robotaConfig, setRobotaConfig] = useState<RobotaConfig | null>(null)
   const [channelStatus, setChannelStatus] = useState<MessagingStatus | null>(null)
-  const [activeChannel, setActiveChannel] = useState<'robota' | 'whatsapp' | 'telegram' | 'viber' | 'calendly' | null>(null)
+  const [activeChannel, setActiveChannel] = useState<'robota' | 'telegram' | 'calendly' | 'email' | null>(null)
 
   async function refresh() {
     const [r1, r2] = await Promise.all([api.robota.config(), messagingApi.status()])
@@ -104,38 +116,24 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
             }}
           />
           <Card
-            icon={iconWhatsApp} brandColor="#25D366"
-            name="WhatsApp"
-            subtitle="Via Twilio Cloud API"
-            status={channelStatus?.whatsapp?.connected ? 'connected' : 'disconnected'}
-            identity={channelStatus?.whatsapp?.identity}
-            onConnect={() => setActiveChannel('whatsapp')}
-            onDisconnect={async () => {
-              if (!confirm('Disconnect WhatsApp?')) return
-              await messagingApi.whatsapp.disconnect()
-              await refresh()
-            }}
-          />
-          <Card
             icon={iconViber} brandColor="#7360F2"
             name="Viber"
             subtitle="Via TurboSMS"
-            status={channelStatus?.viber?.connected ? 'connected' : 'disconnected'}
-            identity={channelStatus?.viber?.identity}
-            onConnect={() => setActiveChannel('viber')}
-            onDisconnect={async () => {
-              if (!confirm('Disconnect Viber?')) return
-              await messagingApi.viber.disconnect()
-              await refresh()
-            }}
+            status="disconnected"
+            comingSoon
           />
           <Card
-            icon={iconEmail} brandColor="#EA4335"
-            name="Email Gmail"
-            subtitle={channelStatus?.email?.configured ? 'Configured via .env' : 'Not configured (set in .env)'}
+            icon={iconEmail} brandColor="#0078D4"
+            name="Email"
+            subtitle="Gmail, Outlook 365, or any SMTP server"
             status={channelStatus?.email?.configured ? 'connected' : 'disconnected'}
             identity={channelStatus?.email?.identity}
-            readonly
+            onConnect={() => setActiveChannel('email')}
+            onDisconnect={async () => {
+              if (!confirm('Disconnect email?')) return
+              await api.robota.smtpDisconnect()
+              await refresh()
+            }}
           />
 
           <SectionTitle style={{ marginTop: 24 }}>Meeting scheduling</SectionTitle>
@@ -156,10 +154,9 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
       </div>
 
       {activeChannel === 'robota'   && <RobotaConnectModal   onClose={() => { setActiveChannel(null); refresh() }} />}
-      {activeChannel === 'whatsapp' && <WhatsAppConnectModal onClose={() => { setActiveChannel(null); refresh() }} />}
       {activeChannel === 'telegram' && <TelegramConnectModal onClose={() => { setActiveChannel(null); refresh() }} />}
-      {activeChannel === 'viber'    && <ViberConnectModal    onClose={() => { setActiveChannel(null); refresh() }} />}
       {activeChannel === 'calendly' && <CalendlyConnectModal initial={robotaConfig?.calendly_url || ''} onClose={() => { setActiveChannel(null); refresh() }} />}
+      {activeChannel === 'email'    && <EmailConnectModal    onClose={() => { setActiveChannel(null); refresh() }} />}
     </div>
   )
 }
@@ -209,7 +206,7 @@ function SectionTitle({ children, style }: { children: React.ReactNode; style?: 
   )
 }
 
-function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, onDisconnect, readonly }: {
+function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, onDisconnect, readonly, comingSoon }: {
   icon?: React.ReactNode
   brandColor?: string
   name: string
@@ -219,7 +216,9 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
   onConnect?: () => void
   onDisconnect?: () => void
   readonly?: boolean
+  comingSoon?: boolean
 }) {
+  const { uiLang } = useAppStore()
   const ok = status === 'connected'
   return (
     <div style={{
@@ -229,6 +228,7 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
       display: 'flex', alignItems: 'center', gap: 14,
       transition: 'border-color 150ms, box-shadow 150ms',
       boxShadow: ok ? '0 1px 2px rgba(22, 163, 74, 0.06)' : 'none',
+      opacity: comingSoon ? 0.6 : 1,
     }}>
       {icon && (
         <div style={{
@@ -241,10 +241,12 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="flex items-center gap-8" style={{ marginBottom: 2 }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)' }}>{name}</span>
-          <span style={{
-            width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-            background: ok ? '#16A34A' : 'var(--text-3)',
-          }} title={ok ? 'Connected' : 'Not connected'} />
+          {!comingSoon && (
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+              background: ok ? '#16A34A' : 'var(--text-3)',
+            }} title={ok ? 'Connected' : 'Not connected'} />
+          )}
         </div>
         {identity ? (
           <div style={{ fontSize: 12, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -254,7 +256,13 @@ function Card({ icon, brandColor, name, subtitle, status, identity, onConnect, o
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{subtitle}</div>
         ) : null}
       </div>
-      {!readonly && (
+      {comingSoon ? (
+        <span style={{
+          fontSize: 11, padding: '5px 10px', borderRadius: 8, fontWeight: 500,
+          background: 'var(--surface-2)', color: 'var(--text-3)',
+          border: '1px solid var(--border)', flexShrink: 0,
+        }}>{T[uiLang].channels.comingSoon}</span>
+      ) : !readonly && (
         ok ? (
           <button onClick={onDisconnect} style={{
             fontSize: 12, padding: '7px 12px', borderRadius: 8, fontWeight: 500,
@@ -507,6 +515,85 @@ function TelegramConnectModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+type EmailPreset = 'gmail' | 'outlook' | 'custom'
+const SMTP_PRESETS: Record<Exclude<EmailPreset, 'custom'>, { host: string; port: string; help: string }> = {
+  gmail:   { host: 'smtp.gmail.com',     port: '465', help: 'Use a Gmail App Password (not your regular password). Create one at myaccount.google.com/apppasswords (2-step verification required).' },
+  outlook: { host: 'smtp.office365.com', port: '587', help: 'Use your Microsoft 365 / Outlook email and password. If your account uses MFA, create an App Password in your Microsoft 365 security settings.' },
+}
+
+function EmailConnectModal({ onClose }: { onClose: () => void }) {
+  const [preset, setPreset] = useState<EmailPreset>('outlook')
+  const [host, setHost] = useState('smtp.office365.com')
+  const [port, setPort] = useState('587')
+  const [user, setUser] = useState('')
+  const [pass, setPass] = useState('')
+  const [from, setFrom] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  function setPresetAndDefaults(p: EmailPreset) {
+    setPreset(p); setError('')
+    if (p !== 'custom') {
+      setHost(SMTP_PRESETS[p].host)
+      setPort(SMTP_PRESETS[p].port)
+    }
+  }
+
+  async function connect() {
+    if (!host || !port || !user || !pass) { setError('All fields are required'); return }
+    setLoading(true); setError('')
+    const r = await api.robota.smtpConfig({ host, port, user, pass, from: from || user })
+    setLoading(false)
+    if (r.error) setError(r.error)
+    else onClose()
+  }
+
+  return (
+    <ModalShell title="Connect email (SMTP)" onClose={onClose} width={500}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {([
+          ['gmail',   'Gmail'],
+          ['outlook', 'Outlook 365'],
+          ['custom',  'Custom SMTP'],
+        ] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setPresetAndDefaults(id)} style={{
+            flex: 1, padding: '8px 10px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+            border: `1px solid ${preset === id ? 'var(--accent)' : 'var(--border)'}`,
+            background: preset === id ? 'var(--surface)' : 'var(--surface-2)',
+            color: preset === id ? 'var(--text-1)' : 'var(--text-2)',
+            cursor: 'pointer',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {preset !== 'custom' && (
+        <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 14, lineHeight: 1.5 }}>
+          {SMTP_PRESETS[preset].help}
+        </p>
+      )}
+
+      <Field label="Email address" value={user} onChange={setUser} placeholder={preset === 'outlook' ? 'alena.pryhodko@farmasoft.ua' : 'you@example.com'} type="email" />
+      <Field label="Password" value={pass} onChange={setPass} placeholder="••••••••••••••••" type="password" />
+      {preset === 'custom' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+          <Field label="SMTP host" value={host} onChange={setHost} placeholder="smtp.example.com" />
+          <Field label="Port" value={port} onChange={setPort} placeholder="587" />
+        </div>
+      )}
+      <Field label="Sender display address (optional)" value={from} onChange={setFrom} placeholder={user || 'leave empty to use the address above'} type="email" />
+
+      {error && <p style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{error}</p>}
+
+      <div className="flex gap-8 justify-end mt-16">
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary btn-sm" onClick={connect} disabled={loading || !user || !pass || !host || !port}>
+          {loading ? 'Testing connection…' : 'Connect'}
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
 function CalendlyConnectModal({ initial, onClose }: { initial: string; onClose: () => void }) {
   const [url, setUrl] = useState(initial)
   const [loading, setLoading] = useState(false)
@@ -549,11 +636,17 @@ export function Sidebar() {
   const t = T[uiLang]
   const [menuOpen, setMenuOpen] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [robotaEmail, setRobotaEmail] = useState('')
   const refreshRef = useRef(0)
 
   useEffect(() => {
-    api.robota.config().then(r => setConnected(!!r.data?.robota_configured))
+    api.robota.config().then(r => {
+      setConnected(!!r.data?.robota_configured)
+      setRobotaEmail(r.data?.robota_email || '')
+    })
   }, [menuOpen, refreshRef.current])
+
+  const identity = identityFromEmail(robotaEmail)
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: t.nav.dashboard, icon: iconDashboard },
@@ -585,7 +678,7 @@ export function Sidebar() {
               justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 600,
               lineHeight: '1', margin: '0 auto', cursor: 'pointer', position: 'relative',
             }}>
-            U
+            {identity.initials}
             {connected && (
               <span style={{
                 position: 'absolute', bottom: -2, right: -2, width: 10, height: 10,
@@ -631,7 +724,7 @@ export function Sidebar() {
               background: 'var(--accent)', display: 'flex', alignItems: 'center',
               justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 600,
               lineHeight: '1',
-            }}>U</div>
+            }}>{identity.initials}</div>
             {connected && (
               <span style={{
                 position: 'absolute', bottom: 0, right: 0, width: 10, height: 10,
@@ -640,7 +733,7 @@ export function Sidebar() {
             )}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.user.name}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{identity.name}</div>
             <div style={{ fontSize: 10, color: connected ? '#16A34A' : 'var(--text-3)', fontWeight: 500 }}>
               {connected ? 'Connected' : 'Click to connect'}
             </div>

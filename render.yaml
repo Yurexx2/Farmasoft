@@ -1,0 +1,32 @@
+# Render Blueprint — deploys Farmasoft RH as an always-on Docker web service.
+# Import this repo on render.com → it reads this file and provisions everything.
+services:
+  - type: web
+    name: farmasoft
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # always-on; the free plan sleeps and would kill Telegram + cron
+    healthCheckPath: /
+    # Persistent disk — the SQLite DB, cities cache and work.ua session live here
+    # so they survive every redeploy.
+    disk:
+      name: farmasoft-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: FARMASOFT_DATA_DIR
+        value: /data
+      - key: NODE_ENV
+        value: production
+      # Secrets — set these values in the Render dashboard (sync:false keeps them
+      # out of the repo). VITE_API_SECRET must equal API_SECRET.
+      - key: API_SECRET
+        sync: false
+      - key: VITE_API_SECRET
+        sync: false
+      - key: OPENAI_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_CSE_ID
+        sync: false

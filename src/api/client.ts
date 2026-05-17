@@ -20,6 +20,31 @@ async function req<T>(url: string, options?: RequestInit): Promise<{ data?: T; e
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const body = (data: any) => ({ body: JSON.stringify(data) })
 
+// Publish endpoints can return a `publication_failure` payload alongside `error`,
+// describing why publication was rejected (insufficient credits, incomplete profile…).
+// The UI uses this to render specific recovery actions (buy credits, fix profile).
+export interface PublicationFailure {
+  kind: 'insufficient_credits' | 'profile_incomplete' | 'other'
+  publicationType?: string
+  robota_vacancy_id?: number
+  raw_message?: string
+}
+async function reqPublish(
+  url: string,
+  options?: RequestInit,
+): Promise<{ data?: { success: boolean; robota_vacancy_id: number }; error?: string; publication_failure?: PublicationFailure }> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (API_KEY) headers['x-api-key'] = API_KEY
+    const res = await fetch(`${BASE}${url}`, { headers, ...options })
+    const json = await res.json()
+    if (!res.ok) return { error: json.error || `HTTP ${res.status}`, publication_failure: json.publication_failure }
+    return json
+  } catch (err) {
+    return { error: (err as Error).message }
+  }
+}
+
 export const api = {
   jobs: {
     list: () => req<Job[]>('/jobs'),
@@ -93,6 +118,8 @@ export const api = {
       req<{ success: boolean }>('/robota/disconnect', { method: 'POST' }),
     smtpConfig: (cfg: SmtpConfig) =>
       req<{ success: boolean }>('/robota/smtp-config', { method: 'POST', ...body(cfg) }),
+    smtpDisconnect: () =>
+      req<{ success: boolean }>('/robota/smtp-disconnect', { method: 'POST' }),
     sync: (jobId: number, params: { robota_vacancy_id?: number; auto_qualify?: boolean }) =>
       req<{ imported: number; outreached: number }>(`/robota/sync/${jobId}`, { method: 'POST', ...body(params) }),
     outreach: (candidateId: number, isFollowUp?: boolean) =>
@@ -100,7 +127,9 @@ export const api = {
     sendEmail: (candidateId: number, subject: string, emailBody: string) =>
       req<Candidate>(`/robota/send-email/${candidateId}`, { method: 'POST', ...body({ subject, body: emailBody }) }),
     publishVacancy: (jobId: number, params: { publish_type?: string; contact_email?: string; work_types?: string[]; employment_types?: string[] }) =>
-      req<{ success: boolean; robota_vacancy_id: number }>(`/robota/publish-vacancy/${jobId}`, { method: 'POST', ...body(params) }),
+      reqPublish(`/robota/publish-vacancy/${jobId}`, { method: 'POST', ...body(params) }),
+    retryPublish: (jobId: number) =>
+      reqPublish(`/robota/retry-publish/${jobId}`, { method: 'POST' }),
     myVacancies: () => req<VacancyStatus[]>('/robota/my-vacancies'),
     vacancyState: (robotaVacancyId: number, state: string) =>
       req<{ success: boolean; state: string }>(`/robota/vacancy-state/${robotaVacancyId}`, { method: 'POST', ...body({ state }) }),
@@ -116,6 +145,15 @@ export const api = {
     credits: () => req<CreditsInfo>('/robota/credits'),
     openCv: (resumeId: number, jobId?: number) =>
       req<Candidate>(`/robota/cvdb/open/${resumeId}`, { method: 'POST', ...body({ jobId }) }),
+  },
+  salary: {
+    analyze: (params: { keywords: string; cityId?: number; experienceId?: number; maxRecords?: number; activeWithinDays?: number }) =>
+      req<SalaryAnalysis>('/salary/analyze', { method: 'POST', ...body(params) }),
+    forJob: (jobId: number) =>
+      req<{ analysis: SalaryAnalysis; meta: SalaryCacheMeta } | null>(`/salary/job/${jobId}`),
+    refreshJob: (jobId: number, keywords?: string) =>
+      req<{ analysis: SalaryAnalysis; meta: SalaryCacheMeta }>(`/salary/job/${jobId}/refresh`, { method: 'POST', ...body({ keywords }) }),
+    jobsSummary: () => req<SalaryJobSummary[]>('/salary/jobs-summary'),
   },
 }
 
@@ -377,4 +415,56 @@ export interface CandidateMessageEvent {
   id: number
   metadata: string
   created_at: string
+}
+
+export interface SalaryCacheMeta {
+  computed_at: string
+  keywords_used: string
+  sample_size: number
+  ageHours: number
+  stale: boolean
+}
+
+export interface SalaryJobSummary {
+  job_id: number
+  title: string
+  is_active: boolean
+  sample_size: number | null
+  computed_at: string | null
+  median: number | null
+  p25: number | null
+  p75: number | null
+  keywords: string | null
+}
+
+export interface SalaryStats {
+  count: number
+  min: number
+  max: number
+  median: number
+  p25: number
+  p75: number
+  mean: number
+}
+
+export interface SalaryAnalysis {
+  query: { keywords: string; cityId?: number; experienceId?: number; maxRecords: number; activeWithinDays: number }
+  collection: {
+    totalAvailableOnRobota: number
+    collected: number
+    activeCvs: number
+    discardedInactive: number
+    withoutDeclaredSalary: number
+    withDeclaredSalary: number
+    sanityRejected: number
+    outliersRemoved: number
+    finalSampleSize: number
+    sanityBounds: { floor: number; ceiling: number }
+    iqrBounds: { lower: number; upper: number }
+  }
+  overall: SalaryStats
+  byLevel: Record<string, SalaryStats>
+  byCity: Record<string, SalaryStats>
+  byAgeBand: Record<string, SalaryStats>
+  bySex: Record<string, SalaryStats>
 }

@@ -1,7 +1,10 @@
 import { useState } from 'react'
-import { api, Candidate, Job } from '../../api/client'
+import { api, Candidate, Job, SalaryAnalysis } from '../../api/client'
 import { iconStar, iconTrash } from './icons'
 import { parseProfile } from './helpers'
+import { computeSalaryBand, fmtFullUAH } from './salaryBand'
+import { useAppStore } from '../../store/useAppStore'
+import { T } from '../../i18n'
 
 const STAGE_STRIPE: Record<string, string> = {
   new:        'var(--text-3)',
@@ -9,15 +12,19 @@ const STAGE_STRIPE: Record<string, string> = {
   decision:   '#2E9460',
 }
 
-export function PipelineCard({ candidate, job: _job, onDelete, onClick, onUpdate }: {
+export function PipelineCard({ candidate, job: _job, salary, onDelete, onClick, onUpdate }: {
   candidate: Candidate
   job: Job
+  salary?: SalaryAnalysis
   onDelete: (id: number) => void
   onClick: () => void
   onStageAdvance?: (id: number, newStage: string) => void
   onUpdate?: (c: Candidate) => void
 }) {
   const profile = parseProfile(candidate.profile_data)
+  const band = computeSalaryBand(candidate.salary_expectation, salary)
+  const { uiLang } = useAppStore()
+  const ts = T[uiLang].salary
   const [showNotes, setShowNotes] = useState(false)
   const [opening, setOpening] = useState(false)
   const scoreColor = candidate.qualification_score == null ? 'var(--text-3)'
@@ -111,6 +118,25 @@ export function PipelineCard({ candidate, job: _job, onDelete, onClick, onUpdate
           </div>
         ) : null}
       </div>
+
+      {/* Salary expectation vs market */}
+      {candidate.salary_expectation && candidate.salary_expectation > 0 && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '3px 8px', borderRadius: 6, fontSize: 10, fontWeight: 500,
+          width: 'fit-content',
+          background: band?.bgColor ?? 'var(--surface-2)',
+          color:      band?.color   ?? 'var(--text-2)',
+        }} title={band
+          ? ts.chipTooltip(ts[band.verdictKey], fmtFullUAH(band.median), band.percentile)
+          : ts.askTooltip(fmtFullUAH(candidate.salary_expectation))}>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            <path d="M8 1v14M5 4h4.5a2.5 2.5 0 0 1 0 5H6a2.5 2.5 0 0 0 0 5h5" />
+          </svg>
+          {Math.round(candidate.salary_expectation / 1000).toLocaleString('en-US')}k ₴
+          {band && <span style={{ fontWeight: 400, opacity: 0.85 }}>· p{band.percentile}</span>}
+        </div>
+      )}
 
       {/* Contact info — visible directly on the card */}
       {(candidate.email || candidate.phone) && (

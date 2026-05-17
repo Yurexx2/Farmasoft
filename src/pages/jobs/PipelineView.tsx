@@ -7,6 +7,7 @@ import { PipelineCard } from './PipelineCard'
 import { CandidateModal } from './CandidateModal'
 import { AddCandidatePanel } from './AddCandidatePanel'
 import { RobotaSyncModal } from './RobotaSyncModal'
+import { SalaryBanner, useJobSalary } from './SalaryBanner'
 
 
 export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) {
@@ -23,6 +24,7 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
   const [qualifyProgress, setQualifyProgress] = useState<{ done: number; total: number } | null>(null)
   const [showRobotaSync, setShowRobotaSync] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const salary = useJobSalary(job.id)
 
   useEffect(() => {
     api.candidates.list(job.id).then(r => {
@@ -181,6 +183,11 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
           </div>
         </div>
 
+        {/* Salary intelligence banner */}
+        <div style={{ marginBottom: 12 }}>
+          <SalaryBanner jobId={job.id} state={salary} />
+        </div>
+
         {/* Source tabs */}
         <div style={{
           display: 'flex', gap: 0, marginBottom: 12,
@@ -281,6 +288,7 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
               key={c.id}
               candidate={c}
               job={job}
+              salary={salary.analysis ?? undefined}
               onDelete={deleteCandidate}
               onClick={() => setSelectedCandidate(c)}
               onStageAdvance={advanceStage}
@@ -312,6 +320,8 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
         <CandidateModal
           candidate={selectedCandidate}
           job={job}
+          salary={salary.analysis ?? undefined}
+          salaryMeta={salary.meta ?? undefined}
           onClose={() => setSelectedCandidate(null)}
           onUpdate={updated => {
             setCandidates(prev => prev.map(c => c.id === updated.id ? updated : c))

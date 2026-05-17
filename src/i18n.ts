@@ -271,6 +271,59 @@ export const T = {
       privacyTitle: 'Privacy',
       privacyDesc: 'No full names are stored. Candidates are identified by initials only (e.g. A.B.). All data stays local on this server.',
     },
+
+    channels: {
+      comingSoon: 'Coming soon',
+    },
+
+    salary: {
+      // Banner
+      loading: 'Loading salary benchmark…',
+      notAnalyzed: 'Market salary — not analyzed yet for this position.',
+      analyzeBtn: 'Analyze market salary',
+      analyzing: 'Analyzing… ~30s',
+      refreshing: 'Refreshing…',
+      refresh: 'Refresh',
+      refreshStale: 'Refresh (stale)',
+      tooltipStale: 'Data > 7 days old — refresh recommended',
+      tooltipFresh: 'Re-run analysis with current robota.ua data',
+      marketMedian: 'Market median',
+      typicalRange: 'Typical range (p25–p75)',
+      sample: 'Sample',
+      activeCvs: (n: number) => `${n} active CVs`,
+      // Time ago
+      justNow: 'just now',
+      hoursAgo: (h: number) => `${h}h ago`,
+      yesterday: 'yesterday',
+      daysAgo: (d: number) => `${d}d ago`,
+      // Modal context
+      contextTitle: 'Market salary context',
+      candidateAsks: 'Candidate asks',
+      recommendedBand: 'Recommended band',
+      forLevel: (level: string, n: number) => `For ${level} (${n})`,
+      noExpectation: 'Candidate has not declared a salary expectation — use market median as reference for offers.',
+      scaleMedianLabel: (val: string) => `median ${val}`,
+      candidateMarkerTitle: (val: string) => `Candidate: ${val}`,
+      // Verdicts
+      verdictFarBelow: 'Well below market — opportunity',
+      verdictBelow: 'Below market median',
+      verdictWithin: 'Within market band',
+      verdictAbove: 'Above market median',
+      verdictFarAbove: 'Well above market — high ask',
+      // Levels
+      levelJunior: 'junior',
+      levelMiddle: 'middle',
+      levelSenior: 'senior',
+      levelLead: 'lead',
+      // Chip tooltips
+      chipTooltip: (verdict: string, median: string, pct: number) =>
+        `${verdict}. Market median: ${median}. Candidate at p${pct}.`,
+      askTooltip: (salary: string) => `Ask: ${salary}`,
+      // Dashboard row
+      marketMedianRow: 'Market median',
+      notAnalyzedRow: 'Market salary not analyzed',
+      cvsShort: (n: number) => `${n} CVs`,
+    },
   },
 
   ua: {
@@ -542,6 +595,59 @@ export const T = {
       modelTitle: 'Поточна модель',
       privacyTitle: 'Конфіденційність',
       privacyDesc: 'Повні імена не зберігаються. Кандидати ідентифікуються лише за ініціалами (напр. A.B.). Всі дані залишаються на цьому сервері.',
+    },
+
+    channels: {
+      comingSoon: 'Скоро доступно',
+    },
+
+    salary: {
+      // Banner
+      loading: 'Завантаження аналітики зарплат…',
+      notAnalyzed: 'Ринкова зарплата ще не проаналізована для цієї позиції.',
+      analyzeBtn: 'Проаналізувати ринкову зарплату',
+      analyzing: 'Аналіз… ~30с',
+      refreshing: 'Оновлення…',
+      refresh: 'Оновити',
+      refreshStale: 'Оновити (застаріло)',
+      tooltipStale: 'Дані старіші за 7 днів — рекомендується оновити',
+      tooltipFresh: 'Запустити аналіз заново з актуальними даними robota.ua',
+      marketMedian: 'Медіана ринку',
+      typicalRange: 'Типовий діапазон (p25–p75)',
+      sample: 'Вибірка',
+      activeCvs: (n: number) => `${n} активних резюме`,
+      // Time ago
+      justNow: 'щойно',
+      hoursAgo: (h: number) => `${h} год тому`,
+      yesterday: 'вчора',
+      daysAgo: (d: number) => `${d} дн тому`,
+      // Modal context
+      contextTitle: 'Контекст ринкової зарплати',
+      candidateAsks: 'Кандидат просить',
+      recommendedBand: 'Рекомендований діапазон',
+      forLevel: (level: string, n: number) => `Для ${level} (${n})`,
+      noExpectation: 'Кандидат не вказав очікувану зарплату — використовуйте медіану ринку як орієнтир для пропозиції.',
+      scaleMedianLabel: (val: string) => `медіана ${val}`,
+      candidateMarkerTitle: (val: string) => `Кандидат: ${val}`,
+      // Verdicts
+      verdictFarBelow: 'Значно нижче ринку — можливість',
+      verdictBelow: 'Нижче медіани ринку',
+      verdictWithin: 'У межах ринкового діапазону',
+      verdictAbove: 'Вище медіани ринку',
+      verdictFarAbove: 'Значно вище ринку — висока вимога',
+      // Levels
+      levelJunior: 'початківець',
+      levelMiddle: 'середній',
+      levelSenior: 'старший',
+      levelLead: 'провідний',
+      // Chip tooltips
+      chipTooltip: (verdict: string, median: string, pct: number) =>
+        `${verdict}. Медіана ринку: ${median}. Кандидат на p${pct}.`,
+      askTooltip: (salary: string) => `Очікування: ${salary}`,
+      // Dashboard row
+      marketMedianRow: 'Медіана ринку',
+      notAnalyzedRow: 'Ринкова зарплата не проаналізована',
+      cvsShort: (n: number) => `${n} резюме`,
     },
   },
 }

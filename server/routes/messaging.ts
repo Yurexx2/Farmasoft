@@ -10,7 +10,7 @@ import { whatsappTest, whatsappSend } from '../lib/messaging/whatsapp'
 import { viberTest, viberSend } from '../lib/messaging/viber'
 import {
   telegramStartAuth, telegramSubmitCode, telegramSubmitPassword,
-  telegramDisconnect, telegramSend, telegramIsConnected,
+  telegramDisconnect, telegramSend, telegramIsConnected, telegramResendCode,
 } from '../lib/messaging/telegram'
 
 const router = Router()
@@ -75,7 +75,13 @@ router.post('/telegram/start', async (req: Request, res: Response) => {
   if (!r.ok) return res.json({ error: r.error })
   // Save api creds (without session yet) so they survive reload during auth
   saveTelegramCreds({ apiId: parseInt(String(apiId)), apiHash, phoneNumber: phone })
-  res.json({ data: { ok: true, message: 'Code envoyé via Telegram. Saisissez-le.' } })
+  res.json({ data: { ok: true, message: 'Code envoyé via Telegram. Saisissez-le.', deliveryType: r.deliveryType, nextType: r.nextType, timeout: r.timeout } })
+})
+
+router.post('/telegram/resend', async (_req: Request, res: Response) => {
+  const r = await telegramResendCode()
+  if (!r.ok) return res.json({ error: r.error })
+  res.json({ data: { ok: true, deliveryType: r.deliveryType, nextType: r.nextType } })
 })
 
 router.post('/telegram/code', async (req: Request, res: Response) => {

@@ -59,9 +59,11 @@ import * as fsMod from 'fs'
 import * as pathMod from 'path'
 import * as osMod from 'os'
 
-const CITIES_CACHE_DIR = process.env.APPDATA
-  ? pathMod.join(process.env.APPDATA, 'Farmasoft', 'data')
-  : pathMod.join(osMod.homedir(), '.farmasoft', 'data')
+const CITIES_CACHE_DIR = process.env.FARMASOFT_DATA_DIR
+  ? process.env.FARMASOFT_DATA_DIR
+  : process.env.APPDATA
+    ? pathMod.join(process.env.APPDATA, 'Farmasoft', 'data')
+    : pathMod.join(osMod.homedir(), '.farmasoft', 'data')
 const CITIES_CACHE_PATH = pathMod.join(CITIES_CACHE_DIR, 'cities.json')
 
 function loadCitiesIntoMap(arr: Array<{ id: number; nameUkr?: string; name?: string }>) {
@@ -862,15 +864,40 @@ router.post('/config', (req: Request, res: Response) => {
 })
 
 // ─── Save SMTP ────────────────────────────────────────────────────────────────
-router.post('/smtp-config', (req: Request, res: Response) => {
+router.post('/smtp-config', async (req: Request, res: Response) => {
   try {
     const db = getDb()
     const { host, port, user, pass, from } = req.body as Record<string, string>
-    if (host) saveSetting(db, 'smtp_host', host)
-    if (port) saveSetting(db, 'smtp_port', port)
-    if (user) saveSetting(db, 'smtp_user', user)
-    if (pass) saveSetting(db, 'smtp_pass', pass)
-    if (from) saveSetting(db, 'smtp_from', from)
+    if (!host || !port || !user || !pass) return res.json({ error: 'host, port, user, pass required' })
+
+    // Test connection before saving
+    const nodemailer = await import('nodemailer')
+    const transporter = nodemailer.createTransport({
+      host, port: parseInt(port), secure: parseInt(port) === 465,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+    })
+    try {
+      await transporter.verify()
+    } catch (e) {
+      return res.json({ error: 'SMTP connection failed: ' + (e as Error).message })
+    }
+
+    saveSetting(db, 'smtp_host', host)
+    saveSetting(db, 'smtp_port', port)
+    saveSetting(db, 'smtp_user', user)
+    saveSetting(db, 'smtp_pass', pass)
+    saveSetting(db, 'smtp_from', from || user)
+    res.json({ data: { success: true } })
+  } catch (err: unknown) {
+    res.json({ error: (err as Error).message })
+  }
+})
+
+router.post('/smtp-disconnect', (_req: Request, res: Response) => {
+  try {
+    const db = getDb()
+    db.prepare("DELETE FROM settings WHERE key IN ('smtp_host','smtp_port','smtp_user','smtp_pass','smtp_from')").run()
     res.json({ data: { success: true } })
   } catch (err: unknown) {
     res.json({ error: (err as Error).message })
@@ -1121,6 +1148,56 @@ router.delete('/vacancy/:robotaVacancyId', async (req: Request, res: Response) =
   }
 })
 
+// ─── Classify robota.ua publication errors into actionable categories ───────
+// Returns kind=insufficient_credits + the publication type quoted in the message,
+// so the UI can deep-link to the right top-up flow on robota.ua. Falls back to
+// kind=other when the message doesn't match a known pattern.
+type PublicationFailureKind = 'insufficient_credits' | 'profile_incomplete' | 'other'
+function detectPublicationFailure(msg: string): { kind: PublicationFailureKind; publicationType?: string } {
+  const m = msg.toLowerCase()
+  const isCredits = /не\s*вистачає\s*одиниць|недостатньо\s*одиниць|не\s*хватает\s*единиц|insufficient\s+(placement|publication)\s+units/i.test(msg)
+  if (isCredits) {
+    const quoted = msg.match(/["«'„](.+?)["»'"]/)?.[1]
+    return { kind: 'insufficient_credits', publicationType: quoted }
+  }
+  if (/профіль|profile|заповніть|обов'язков/i.test(m)) return { kind: 'profile_incomplete' }
+  return { kind: 'other' }
+}
+
+// ─── Retry publication of a vacancy that's already been created on robota.ua ─
+router.post('/retry-publish/:jobId', async (req: Request, res: Response) => {
+  try {
+    const db = getDb()
+    const jobId = parseInt(req.params.jobId)
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as Record<string, unknown> | undefined
+    if (!job) return res.json({ error: 'Poste introuvable' })
+    const vacancyId = job.robota_vacancy_id as number | null
+    if (!vacancyId) return res.json({ error: 'Aucune annonce robota.ua à republier — utilisez Publish d\'abord' })
+
+    const token = await getToken(db)
+    const stateResp = await axios.post(`${API_URL}/vacancy/state/${vacancyId}?state=Publicated`, {}, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    })
+    if (stateResp.data?.success === false) {
+      const msg = (stateResp.data?.message as string)?.replace('[CUSTOM ERROR] ', '') || 'Publication refusée par robota.ua'
+      const failure = detectPublicationFailure(msg)
+      return res.json({
+        error: msg,
+        publication_failure: { ...failure, robota_vacancy_id: vacancyId, raw_message: msg },
+      })
+    }
+    db.prepare("UPDATE jobs SET robota_state = 'Publicated' WHERE id = ?").run(jobId)
+    db.prepare('INSERT INTO events (type, job_id, metadata) VALUES (?, ?, ?)').run(
+      'vacancy_republished', jobId, JSON.stringify({ robota_vacancy_id: vacancyId }),
+    )
+    res.json({ data: { success: true, robota_vacancy_id: vacancyId } })
+  } catch (err: unknown) {
+    const status = (err as { response?: { status: number } }).response?.status
+    if (status === 401) return res.json({ error: 'Token expiré — reconnectez-vous' })
+    res.json({ error: (err as Error).message })
+  }
+})
+
 // ─── Publish vacancy to robota.ua ─────────────────────────────────────────────
 router.post('/publish-vacancy/:jobId', async (req: Request, res: Response) => {
   try {
@@ -1188,10 +1265,13 @@ router.post('/publish-vacancy/:jobId', async (req: Request, res: Response) => {
       headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
     })
     if (stateResp.data?.success === false) {
-      // Save the vacancy ID even if publication failed — so the user can retry after fixing the profile
-      db.prepare('UPDATE jobs SET robota_vacancy_id = ? WHERE id = ?').run(newVacancyId, jobId)
+      db.prepare("UPDATE jobs SET robota_vacancy_id = ?, robota_state = 'NotPublicated' WHERE id = ?").run(newVacancyId, jobId)
       const msg = (stateResp.data?.message as string)?.replace('[CUSTOM ERROR] ', '') || 'Publication refusée par robota.ua'
-      return res.json({ error: `Annonce créée (ID ${newVacancyId}) mais non publiée — ${msg}` })
+      const failure = detectPublicationFailure(msg)
+      return res.json({
+        error: `Annonce créée (ID ${newVacancyId}) mais non publiée — ${msg}`,
+        publication_failure: { ...failure, robota_vacancy_id: newVacancyId, raw_message: msg },
+      })
     }
 
     // Save vacancy ID

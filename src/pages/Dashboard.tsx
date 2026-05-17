@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, Candidate, KPIs, Interview } from '../api/client'
+import { api, Candidate, KPIs, Interview, SalaryJobSummary } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { T } from '../i18n'
 
@@ -44,13 +44,20 @@ export function Dashboard() {
   const [pendingCVs, setPendingCVs] = useState(0)
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(true)
+  const [salaryMap, setSalaryMap] = useState<Record<string, SalaryJobSummary>>({})
 
   useEffect(() => {
     Promise.all([
       api.analytics.kpis(),
       api.interviews.list(),
       api.candidates.list(),
-    ]).then(([kp, iv, cands]) => {
+      api.salary.jobsSummary(),
+    ]).then(([kp, iv, cands, sal]) => {
+      if (sal.data) {
+        const map: Record<string, SalaryJobSummary> = {}
+        for (const s of sal.data) map[s.title] = s
+        setSalaryMap(map)
+      }
       if (kp.data) setKpis(kp.data)
       if (iv.data) {
         const upcoming = iv.data.filter(i => isUpcoming(i.scheduled_at))
@@ -235,12 +242,28 @@ export function Dashboard() {
 
           {kpis?.byJob && kpis.byJob.length > 0 ? (
             <div style={{ flex: 1 }}>
-              {kpis.byJob.slice(0, 5).map(row => (
-                <div key={row.title} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{row.title}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', flexShrink: 0 }}>{row.count}</span>
-                </div>
-              ))}
+              {kpis.byJob.slice(0, 5).map(row => {
+                const sal = salaryMap[row.title]
+                return (
+                  <div key={row.title} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{row.title}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', flexShrink: 0 }}>{row.count}</span>
+                    </div>
+                    {sal?.median != null ? (
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
+                        {t.salary.marketMedianRow}: <strong style={{ color: 'var(--text-2)' }}>{Math.round(sal.median).toLocaleString('en-US')} ₴</strong>
+                        {sal.p25 != null && sal.p75 != null && ` · ${Math.round(sal.p25 / 1000)}-${Math.round(sal.p75 / 1000)}k`}
+                        {sal.sample_size && ` · ${t.salary.cvsShort(sal.sample_size)}`}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, fontStyle: 'italic' }}>
+                        {t.salary.notAnalyzedRow}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', textAlign: 'center', padding: '16px 0' }}>

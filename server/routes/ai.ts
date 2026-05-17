@@ -223,6 +223,7 @@ ${ctaInstr}
 - Ne jamais commencer par "Мене звати [...]" ou "Je m'appelle [...]" — utiliser une formule collective au nom de l'équipe
 - Sonner humain et naturel, pas robotique
 - Respecter STRICTEMENT la limite de caractères du canal
+- Texte BRUT uniquement — aucun formatage markdown : pas d'astérisques *, pas de _, pas de # ni de **gras**
 
 Réponds UNIQUEMENT avec le texte du message, rien d'autre. Si ta réponse contient un seul crochet [ ou < c'est un échec.`
 
@@ -231,6 +232,7 @@ Réponds UNIQUEMENT avec le texte du message, rien d'autre. Si ta réponse conti
     text = text
       .replace(/[\[<][^\]>]*?(name|nom|ім'я|імя|recruiter|recruteur|HR)[^\]>]*?[\]>]/gi, '')
       .replace(/[\[<][^\]>]{1,40}[\]>]/g, '')
+      .replace(/\*+/g, '')        // strip markdown emphasis asterisks (*bold*, **bold**)
       .replace(/\s{2,}/g, ' ')
       .replace(/^\s*\.\s*/gm, '')
       .trim()

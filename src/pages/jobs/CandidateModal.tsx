@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, Candidate, CandidateMessageEvent, Job, messagingApi, MessagingStatus } from '../../api/client'
+import { api, Candidate, CandidateMessageEvent, Job, messagingApi, MessagingStatus, SalaryAnalysis, SalaryCacheMeta } from '../../api/client'
 import { useAppStore } from '../../store/useAppStore'
 import { T } from '../../i18n'
 import { iconClose, iconSparkle, iconStar, iconTrash } from './icons'
 import { parseProfile, parseTags, stripHtmlToText } from './helpers'
+import { computeSalaryBand, fmtFullUAH, fmtUAH } from './salaryBand'
 
-export function CandidateModal({ candidate: initial, job, onClose, onUpdate, onDelete }: {
+export function CandidateModal({ candidate: initial, job, salary, salaryMeta, onClose, onUpdate, onDelete }: {
   candidate: Candidate
   job: Job | null
+  salary?: SalaryAnalysis
+  salaryMeta?: SalaryCacheMeta
   onClose: () => void
   onUpdate: (c: Candidate) => void
   onDelete: (id: number) => void
@@ -25,7 +28,7 @@ export function CandidateModal({ candidate: initial, job, onClose, onUpdate, onD
   const [copied, setCopied] = useState(false)
   const [genError, setGenError] = useState('')
   const [showSchedule, setShowSchedule] = useState(false)
-  const [channel, setChannel] = useState<'whatsapp' | 'telegram' | 'viber' | 'email'>('whatsapp')
+  const [channel, setChannel] = useState<'telegram' | 'email' | 'viber'>('telegram')
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState('')
   const message = messages[channel] || ''
@@ -299,6 +302,9 @@ export function CandidateModal({ candidate: initial, job, onClose, onUpdate, onD
                   </div>
                 </div>
 
+                {/* Market salary context */}
+                <SalaryContextSection candidate={candidate} salary={salary} salaryMeta={salaryMeta} />
+
                 {/* Timestamps + decision */}
                 {(candidate.viewed_at || candidate.contacted_at || (candidate.decision && candidate.decision !== 'pending')) && (
                   <div className="flex flex-wrap gap-8" style={{ marginBottom: 16 }}>
@@ -548,27 +554,43 @@ export function CandidateModal({ candidate: initial, job, onClose, onUpdate, onD
                   <label style={{ display: 'block', marginBottom: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Channel
                   </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                    {(['whatsapp', 'telegram', 'viber', 'email'] as const).map(ch => {
-                      const info = { whatsapp: { label: 'WhatsApp' }, telegram: { label: 'Telegram' }, viber: { label: 'Viber' }, email: { label: 'Email' } }[ch]
-                      const isConnected = channelStatus?.[ch]?.connected
-                      const isActive = channel === ch
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {(['telegram', 'email', 'viber'] as const).map(ch => {
+                      const info = { telegram: { label: 'Telegram' }, email: { label: 'Email' }, viber: { label: 'Viber' } }[ch]
+                      const isComingSoon = ch === 'viber'
+                      const isConnected = !isComingSoon && (
+                        ch === 'email'
+                          ? channelStatus?.email?.configured
+                          : channelStatus?.telegram?.connected
+                      )
+                      const isActive = !isComingSoon && channel === ch
                       return (
-                        <button key={ch} onClick={() => setChannel(ch)} style={{
-                          padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-                          border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
-                          background: isActive ? 'var(--surface)' : 'var(--surface-2)',
-                          color: isActive ? 'var(--text-1)' : 'var(--text-2)',
-                          cursor: 'pointer',
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                          transition: 'all 120ms',
-                        }}>
+                        <button
+                          key={ch}
+                          onClick={() => { if (!isComingSoon) setChannel(ch) }}
+                          disabled={isComingSoon}
+                          style={{
+                            padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 500,
+                            border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                            background: isActive ? 'var(--surface)' : 'var(--surface-2)',
+                            color: isActive ? 'var(--text-1)' : 'var(--text-2)',
+                            cursor: isComingSoon ? 'not-allowed' : 'pointer',
+                            opacity: isComingSoon ? 0.55 : 1,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                            transition: 'all 120ms',
+                          }}>
                           <span>{info.label}</span>
-                          <span style={{
-                            width: 5, height: 5, borderRadius: '50%',
-                            background: isConnected ? '#16A34A' : 'var(--text-3)',
-                            opacity: isConnected ? 1 : 0.4,
-                          }} />
+                          {isComingSoon ? (
+                            <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                              {T[uiLang].channels.comingSoon}
+                            </span>
+                          ) : (
+                            <span style={{
+                              width: 5, height: 5, borderRadius: '50%',
+                              background: isConnected ? '#16A34A' : 'var(--text-3)',
+                              opacity: isConnected ? 1 : 0.4,
+                            }} />
+                          )}
                         </button>
                       )
                     })}
@@ -609,14 +631,14 @@ export function CandidateModal({ candidate: initial, job, onClose, onUpdate, onD
                 {!message && (
                   <button className="btn btn-primary" onClick={generateMessage} disabled={generating} style={{ marginBottom: 14, width: '100%' }}>
                     {generating ? <span className="spinner" /> : iconSparkle}
-                    {generating ? tm.generating : `Generate for ${channel === 'whatsapp' ? 'WhatsApp' : channel === 'telegram' ? 'Telegram' : channel === 'viber' ? 'Viber' : 'Email'}`}
+                    {generating ? tm.generating : `Generate for ${channel === 'telegram' ? 'Telegram' : channel === 'viber' ? 'Viber' : 'Email'}`}
                   </button>
                 )}
 
                 {genError && <p style={{ color: 'var(--err)', fontSize: 12, marginBottom: 12 }}>{genError}</p>}
 
                 {message && (() => {
-                  const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : channel === 'telegram' ? 'Telegram' : channel === 'viber' ? 'Viber' : 'Email'
+                  const channelLabel = channel === 'telegram' ? 'Telegram' : channel === 'viber' ? 'Viber' : 'Email'
                   return (
                   <div>
                     {/* Preview — neutral platform style */}
@@ -711,5 +733,115 @@ export function CandidateModal({ candidate: initial, job, onClose, onUpdate, onD
         </div>
       </div>
     </>
+  )
+}
+
+// ─── Market salary context — shows candidate's expectation vs job benchmark ──
+function SalaryContextSection({ candidate, salary, salaryMeta }: {
+  candidate: Candidate
+  salary?: SalaryAnalysis
+  salaryMeta?: SalaryCacheMeta
+}) {
+  const { uiLang } = useAppStore()
+  const ts = T[uiLang].salary
+  if (!salary) return null
+  const o = salary.overall
+  const ask = candidate.salary_expectation && candidate.salary_expectation > 0 ? candidate.salary_expectation : null
+  const band = ask ? computeSalaryBand(ask, salary) : null
+
+  const levelKey: 'junior' | 'middle' | 'senior' | 'lead' =
+    !candidate.experience_years || candidate.experience_years < 2 ? 'junior'
+      : candidate.experience_years < 5 ? 'middle'
+      : candidate.experience_years < 10 ? 'senior' : 'lead'
+  const levelLabelKey = (
+    { junior: 'levelJunior', middle: 'levelMiddle', senior: 'levelSenior', lead: 'levelLead' } as const
+  )[levelKey]
+  const levelStats = salary.byLevel[levelKey]
+
+  const chartMax = Math.max(o.max, ask ?? 0) * 1.05
+  const xpct = (v: number) => `${(v / chartMax) * 100}%`
+
+  return (
+    <div style={{
+      background: 'var(--surface-2)', borderRadius: 12, padding: 14, marginBottom: 14,
+      border: '1px solid var(--border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>
+          {ts.contextTitle}
+        </div>
+        {salaryMeta && (
+          <div style={{ fontSize: 10, color: 'var(--text-3)' }}>
+            {ts.activeCvs(salary.collection.finalSampleSize)} · {salaryMeta.keywords_used}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+        {ask && (
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{ts.candidateAsks}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)' }}>{fmtFullUAH(ask)}</div>
+          </div>
+        )}
+        <div>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{ts.marketMedian}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)' }}>{fmtFullUAH(o.median)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{ts.recommendedBand}</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)' }}>{fmtUAH(o.p25)} — {fmtUAH(o.p75)}</div>
+        </div>
+        {levelStats && (
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{ts.forLevel(ts[levelLabelKey], levelStats.count)}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>{fmtFullUAH(levelStats.median)}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 8 }}>
+        <div style={{
+          position: 'relative', height: 14, background: 'var(--surface)',
+          border: '1px solid var(--border)', borderRadius: 7,
+        }}>
+          <div style={{
+            position: 'absolute', left: xpct(o.p25), width: xpct(o.p75 - o.p25),
+            top: 0, bottom: 0, background: 'rgba(34, 139, 86, 0.25)',
+          }} />
+          <div style={{
+            position: 'absolute', left: `calc(${xpct(o.median)} - 1px)`, width: 2, top: -3, bottom: -3,
+            background: 'var(--accent)',
+          }} />
+          {ask && (
+            <div style={{
+              position: 'absolute', left: `calc(${xpct(ask)} - 6px)`, width: 12, height: 20, top: -3,
+              borderRadius: 3, background: band?.color ?? 'var(--text-2)',
+              border: '2px solid var(--surface)', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} title={ts.candidateMarkerTitle(fmtFullUAH(ask))} />
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: 'var(--text-3)' }}>
+          <span>{fmtUAH(o.min)}</span>
+          <span>{fmtUAH(o.p25)}</span>
+          <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>{ts.scaleMedianLabel(fmtUAH(o.median))}</span>
+          <span>{fmtUAH(o.p75)}</span>
+          <span>{fmtUAH(o.max)}</span>
+        </div>
+      </div>
+
+      {band ? (
+        <div style={{
+          marginTop: 10, padding: '8px 12px', borderRadius: 8,
+          background: band.bgColor, color: band.color, fontSize: 12, fontWeight: 500,
+        }}>
+          <strong>p{band.percentile}</strong> — {ts[band.verdictKey]}
+        </div>
+      ) : (
+        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-3)', fontStyle: 'italic' }}>
+          {ts.noExpectation}
+        </div>
+      )}
+    </div>
   )
 }

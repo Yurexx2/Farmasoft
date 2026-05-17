@@ -11,23 +11,29 @@ export function parseTags(raw: string): string[] {
   }
 }
 
-// Convert robota.ua HTML strings (<br>, <ul>, <li>, <p>, &nbsp;) to clean text with bullets
+// Convert robota.ua HTML strings (<br>, <ul>, <li>, <p>, &nbsp;, &Vcy;…) to clean text with bullets.
+// robota.ua encodes Cyrillic in some fields as HTML5/MathML named entities (&Vcy; → В, &icy; → и, …),
+// which React renders literally because we output via {…} as text. We decode them through a
+// detached <textarea> so the browser's HTML parser handles every named entity natively.
 export function stripHtmlToText(raw: string | null | undefined): string {
   if (!raw) return ''
-  return raw
+  let s = raw
     .replace(/<\/?(p|div)[^>]*>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/?ul[^>]*>/gi, '\n')
     .replace(/<\/?ol[^>]*>/gi, '\n')
     .replace(/<li[^>]*>/gi, '\n• ')
     .replace(/<\/li>/gi, '')
-    .replace(/<[^>]+>/g, '')        // strip remaining tags
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, '')
+
+  if (typeof document !== 'undefined' && s.includes('&')) {
+    const ta = document.createElement('textarea')
+    ta.innerHTML = s
+    s = ta.value
+  }
+
+  return s
+    .replace(/ /g, ' ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
