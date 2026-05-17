@@ -1,5 +1,6 @@
 import { useAppStore } from '../../store/useAppStore'
 import { Lang } from '../../i18n'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 const SIDEBAR_WIDTH = 224
 const SIDEBAR_COLLAPSED_WIDTH = 56
@@ -14,6 +15,7 @@ const iconMenu = (
 
 export function TopBar() {
   const { uiLang, setUiLang, sidebarOpen, toggleSidebar } = useAppStore()
+  const isMobile = useIsMobile()
 
   return (
     <div style={{
@@ -21,15 +23,15 @@ export function TopBar() {
       borderBottom: '1px solid var(--border)',
       display: 'flex', alignItems: 'center', flexShrink: 0,
     }}>
-      {/* Logo zone */}
+      {/* Logo zone — on mobile a fixed compact zone (decoupled from the drawer state) */}
       <div style={{
-        width: sidebarOpen ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH,
-        minWidth: sidebarOpen ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH,
+        width: isMobile ? 'auto' : (sidebarOpen ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH),
+        minWidth: isMobile ? 'auto' : (sidebarOpen ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH),
         height: '100%', display: 'flex', alignItems: 'center',
-        padding: sidebarOpen ? '0 16px' : '0',
-        justifyContent: sidebarOpen ? 'flex-start' : 'center',
+        padding: isMobile ? '0 14px' : (sidebarOpen ? '0 16px' : '0'),
+        justifyContent: isMobile || sidebarOpen ? 'flex-start' : 'center',
         gap: 12,
-        borderRight: '1px solid var(--border)',
+        borderRight: isMobile ? 'none' : '1px solid var(--border)',
         transition: 'width 200ms ease, min-width 200ms ease',
       }}>
         <button
@@ -45,8 +47,8 @@ export function TopBar() {
         >
           {iconMenu}
         </button>
-        {sidebarOpen && (
-          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Farmasoft" style={{ height: 34, width: 'auto', display: 'block' }} />
+        {(sidebarOpen || isMobile) && (
+          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Farmasoft" style={{ height: isMobile ? 28 : 34, width: 'auto', display: 'block' }} />
         )}
       </div>
 

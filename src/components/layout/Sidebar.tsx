@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAppStore, Page } from '../../store/useAppStore'
 import { T } from '../../i18n'
 import { api, RobotaConfig, messagingApi, MessagingStatus } from '../../api/client'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 interface NavItem { id: Page; label: string; icon: JSX.Element }
 
@@ -635,12 +636,16 @@ function CalendlyConnectModal({ initial, onClose }: { initial: string; onClose: 
 // Sidebar
 // ─────────────────────────────────────────────────────────────────────────
 export function Sidebar() {
-  const { currentPage, setPage, uiLang, sidebarOpen } = useAppStore()
+  const { currentPage, setPage, uiLang, sidebarOpen, setSidebarOpen } = useAppStore()
   const t = T[uiLang]
+  const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
   const [connected, setConnected] = useState(false)
   const [robotaEmail, setRobotaEmail] = useState('')
   const refreshRef = useRef(0)
+
+  // On mobile a nav tap should also dismiss the slide-over drawer.
+  const goToPage = (id: Page) => { setPage(id); if (isMobile) setSidebarOpen(false) }
 
   useEffect(() => {
     api.robota.config().then(r => {
@@ -656,7 +661,8 @@ export function Sidebar() {
     { id: 'jobs',      label: t.nav.jobs,      icon: iconFile },
   ]
 
-  if (!sidebarOpen) {
+  // Desktop collapsed rail — never used on mobile (mobile uses the drawer below).
+  if (!sidebarOpen && !isMobile) {
     return (
       <aside className="sidebar-collapsed" style={{ position: 'relative' }}>
         <nav className="sidebar-nav">
@@ -664,7 +670,7 @@ export function Sidebar() {
             <div
               key={item.id}
               className={`nav-item-icon${currentPage === item.id ? ' active' : ''}`}
-              onClick={() => setPage(item.id)}
+              onClick={() => goToPage(item.id)}
               title={item.label}
             >
               {item.icon}
@@ -696,13 +702,16 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="sidebar" style={{ position: 'relative' }}>
+    <aside
+      className={`sidebar${isMobile && sidebarOpen ? ' sidebar-mobile-open' : ''}`}
+      style={{ position: 'relative' }}
+    >
       <nav className="sidebar-nav">
         {navItems.map(item => (
           <div
             key={item.id}
             className={`nav-item${currentPage === item.id ? ' active' : ''}`}
-            onClick={() => setPage(item.id)}
+            onClick={() => goToPage(item.id)}
           >
             {item.icon}
             {item.label}

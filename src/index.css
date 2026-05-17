@@ -356,3 +356,34 @@ input[type=number] { -moz-appearance: textfield; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ─── Mobile (≤768px) — desktop layout above this width is untouched ── */
+@media (max-width: 768px) {
+  .page          { padding: 16px 16px 48px; max-width: 100%; }
+  .page-pipeline { padding: 14px 14px 24px; }
+  .page-header   { margin-bottom: 20px; }
+  .page-title    { font-size: 19px; }
+
+  .kpi-grid   { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .form-grid, .form-grid-3 { grid-template-columns: 1fr; gap: 12px; }
+  .candidate-grid { grid-template-columns: 1fr; }
+
+  .modal        { width: 100%; max-width: 100%; border-radius: 16px; padding: 22px 18px; }
+  .modal-overlay { padding: 12px; }
+
+  /* Mobile sidebar = slide-over drawer; hidden until toggled. */
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 1200;
+    width: 240px; min-width: 240px;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+  }
+  .sidebar.sidebar-mobile-open { transform: translateX(0); }
+  .sidebar-collapsed { display: none; }
+
+  .sidebar-backdrop {
+    position: fixed; inset: 0; z-index: 1150;
+    background: rgba(15, 23, 42, 0.45);
+  }
+}

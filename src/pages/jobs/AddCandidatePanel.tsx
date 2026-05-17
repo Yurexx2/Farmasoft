@@ -3,6 +3,7 @@ import { api, Candidate, CreditsInfo, Job } from '../../api/client'
 import { useAppStore } from '../../store/useAppStore'
 import { T } from '../../i18n'
 import { iconClose, iconUpload } from './icons'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 const POPULAR_CITIES = [
   { id: 1,  name: 'Київ' },     { id: 2,  name: 'Харків' }, { id: 21, name: 'Львів' },
@@ -27,6 +28,7 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
   onClose: () => void
 }) {
   const { uiLang } = useAppStore()
+  const isMobile = useIsMobile()
   const tap = T[uiLang].jobs.addPanel
   const [mode, setMode] = useState<'cvSearch' | 'cvImport'>('cvSearch')
 
@@ -144,7 +146,8 @@ export function AddCandidatePanel({ job, onAdd, onClose }: {
 
   return (
     <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: 480,
+      position: 'fixed', top: 0, right: 0, bottom: 0,
+      width: isMobile ? '100%' : 480,
       background: 'var(--surface)', boxShadow: 'var(--shadow-lg)',
       display: 'flex', flexDirection: 'column', zIndex: 100,
     }}>

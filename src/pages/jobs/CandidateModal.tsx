@@ -153,7 +153,7 @@ export function CandidateModal({ candidate: initial, job, salary, salaryMeta, on
     <>
       <div className="modal-overlay" onClick={onClose}>
         <div className="modal" onClick={e => e.stopPropagation()}
-          style={{ width: 680, padding: 0, overflow: 'hidden', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+          style={{ width: 680, maxWidth: '95vw', padding: 0, overflow: 'hidden', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
 
           {/* Header */}
           <div style={{ padding: '20px 24px 0', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>

@@ -12,6 +12,7 @@ interface AppStore {
   setApiKeyConfigured: (v: boolean) => void
   setUiLang: (lang: Lang) => void
   toggleSidebar: () => void
+  setSidebarOpen: (v: boolean) => void
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -23,4 +24,5 @@ export const useAppStore = create<AppStore>((set) => ({
   setApiKeyConfigured: (apiKeyConfigured) => set({ apiKeyConfigured }),
   setUiLang: (uiLang) => set({ uiLang }),
   toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
+  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
 }))

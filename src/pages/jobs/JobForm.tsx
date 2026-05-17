@@ -103,7 +103,7 @@ export function JobForm({ initial, onSave, onClose }: {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 720, maxHeight: '92vh', overflowY: 'auto' }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 720, maxWidth: '95vw', maxHeight: '92vh', overflowY: 'auto' }}>
         <div className="flex items-center justify-between mb-24">
           <h2 className="modal-title">{isEdit ? tf.editTitle : tf.newTitle}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}>{iconClose}</button>

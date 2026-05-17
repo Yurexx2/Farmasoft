@@ -143,7 +143,7 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
       <div className="page-header" style={{ paddingBottom: 12, flexShrink: 0 }}>
-        <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
           <div className="flex items-center gap-16">
             <button onClick={onBack} style={{
               background: 'var(--surface-2)', border: 'none', borderRadius: 10,

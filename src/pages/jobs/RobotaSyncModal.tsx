@@ -476,7 +476,7 @@ export function RobotaSyncModal({ job, onClose, onImported }: Props) {
             {/* Delete confirmation modal */}
             {confirmDelete && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
-                <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '24px 28px', width: 380, boxShadow: '0 8px 40px rgba(0,0,0,0.2)' }}>
+                <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '24px 28px', width: 380, maxWidth: '92vw', boxShadow: '0 8px 40px rgba(0,0,0,0.2)' }}>
                   <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Supprimer l'annonce ?</div>
                   <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16 }}>
                     Supprime définitivement <strong>"{confirmDelete.title}"</strong> (ID {confirmDelete.robota_vacancy_id}) sur robota.ua. Les candidats importés restent dans Farmasoft.

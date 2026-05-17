@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, Candidate, KPIs, Interview, SalaryJobSummary } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { T } from '../i18n'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 function isToday(s: string) {
   const d = new Date(s), n = new Date()
@@ -35,6 +36,7 @@ function KpiCard({ value, label, sub, subColor }: {
 
 export function Dashboard() {
   const { setPage, uiLang } = useAppStore()
+  const isMobile = useIsMobile()
   const t = T[uiLang]
   const d = t.dashboard
   const k = d.kpi
@@ -118,9 +120,10 @@ export function Dashboard() {
 
   return (
     <div style={{
-      padding: '28px 52px 28px', maxWidth: 1100, margin: '0 auto',
+      padding: isMobile ? '16px 16px 24px' : '28px 52px 28px', maxWidth: 1100, margin: '0 auto',
       height: '100%', boxSizing: 'border-box',
-      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      display: 'flex', flexDirection: 'column',
+      overflow: isMobile ? 'auto' : 'hidden',
     }}>
 
       {/* ── Header ── */}
@@ -152,7 +155,7 @@ export function Dashboard() {
       </div>
 
       {/* ── KPI row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 16, flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 16, flexShrink: 0 }}>
         <KpiCard
           value={activeJobs} label={k.activeJobs}
           sub={activeJobs > 0 ? k.active : k.noJob}
@@ -176,7 +179,13 @@ export function Dashboard() {
       </div>
 
       {/* ── Middle row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 14, flex: 1, minHeight: 0 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 280px',
+        gap: 14,
+        flex: isMobile ? 'none' : 1,
+        minHeight: 0,
+      }}>
 
         {/* Today's interviews */}
         <div style={{ background: 'var(--surface)', borderRadius: 16, padding: '22px 26px', boxShadow: 'var(--shadow)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
