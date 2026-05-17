@@ -27,7 +27,7 @@ function normalize(body: Record<string, unknown>): Record<string, unknown> {
 router.get('/', (_req: Request, res: Response) => {
   try {
     const db = getDb()
-    const jobs = db.prepare('SELECT * FROM jobs WHERE is_active = 1 ORDER BY created_at DESC').all()
+    const jobs = db.prepare('SELECT * FROM jobs WHERE is_active = 1 AND deleted = 0 ORDER BY created_at DESC').all()
     res.json({ data: jobs })
   } catch (err: unknown) {
     res.json({ error: (err as Error).message })
@@ -41,6 +41,7 @@ router.get('/with-counts', (_req: Request, res: Response) => {
       SELECT j.*, COUNT(c.id) as candidate_count
       FROM jobs j
       LEFT JOIN candidates c ON c.job_id = j.id
+      WHERE j.deleted = 0
       GROUP BY j.id
       ORDER BY j.is_active DESC, j.created_at DESC
     `).all()
@@ -151,7 +152,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
       await syncJobToRobota(parseInt(id), 'close').catch(() => null)
     }
 
-    db.prepare('UPDATE jobs SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id)
+    // Hard delete — mark deleted=1 so list queries exclude it permanently and
+    // the robota sync never resurrects it (a plain is_active=0 reappeared on
+    // reload because /with-counts returned inactive jobs too).
+    db.prepare('UPDATE jobs SET is_active = 0, deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id)
     res.json({ data: { success: true } })
   } catch (err: unknown) {
     res.json({ error: (err as Error).message })

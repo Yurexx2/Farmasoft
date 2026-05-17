@@ -1639,6 +1639,12 @@ export async function runFullSync(): Promise<void> {
       // Find or create+update the linked Farmasoft job
       let job = db.prepare('SELECT * FROM jobs WHERE robota_vacancy_id = ?').get(v.id) as Record<string, unknown> | undefined
 
+      // The user deleted this job in Farmasoft — never resurrect it from robota.
+      if (job && job.deleted === 1) {
+        fullSyncProgress.vacanciesDone++
+        continue
+      }
+
       // is_active reflects the current state on robota.ua
       const isActive = ['Publicated', 'Waiting'].includes(state) ? 1 : 0
 

@@ -154,6 +154,10 @@ export function getDb(): DatabaseSync {
   try { db.exec("ALTER TABLE jobs ADD COLUMN languages TEXT DEFAULT '[]'") } catch { /* already exists */ }
   try { db.exec('ALTER TABLE jobs ADD COLUMN robota_state TEXT') } catch { /* already exists */ }
   try { db.exec('ALTER TABLE jobs ADD COLUMN robota_error TEXT') } catch { /* already exists */ }
+  // Hard-delete flag — a job the user removed via the trash icon. Distinct from
+  // is_active=0 (a paused job that still shows in the list). deleted=1 jobs are
+  // excluded from every list query and are never resurrected by the robota sync.
+  try { db.exec('ALTER TABLE jobs ADD COLUMN deleted INTEGER DEFAULT 0') } catch { /* already exists */ }
 
   // Prevent importing the same robota application twice for the same job
   try {
