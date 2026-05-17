@@ -193,6 +193,7 @@ export const messagingApi = {
     testSend: (to: string, text: string) =>
       req<{ ok: boolean; messageId?: number }>('/messaging/telegram/test-send', { method: 'POST', ...body({ to, body: text }) }),
     disconnect: () => req<{ ok: boolean }>('/messaging/telegram/disconnect', { method: 'POST' }),
+    reload: () => req<{ connected: boolean }>('/messaging/telegram/reload', { method: 'POST' }),
   },
 
   send: (candidateId: number, params: { message: string; ctaUrl?: string; channels: ('telegram'|'whatsapp'|'viber'|'email')[]; stopOnFirstSuccess?: boolean }) =>

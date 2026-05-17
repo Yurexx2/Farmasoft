@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { telegramApi, TgConversation, TgConversationDetail, TgMessage, TgBotSettings } from '../../api/client'
+import { telegramApi, messagingApi, TgConversation, TgConversationDetail, TgMessage, TgBotSettings } from '../../api/client'
 import { useAppStore } from '../../store/useAppStore'
 import { T } from '../../i18n'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -43,6 +43,8 @@ export function TelegramPage() {
   const [conversations, setConversations] = useState<TgConversation[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [reconnecting, setReconnecting] = useState(false)
+  const autoTried = useRef(false)
 
   const loadConversations = useCallback(async () => {
     const r = await telegramApi.conversations()
@@ -53,9 +55,29 @@ export function TelegramPage() {
   const loadSettings = useCallback(async () => {
     const r = await telegramApi.settings()
     if (r.data) setSettings(r.data)
+    return r.data
   }, [])
 
-  useEffect(() => { loadSettings(); loadConversations() }, [loadSettings, loadConversations])
+  // Re-establish the Telegram link from the saved session — no code needed.
+  // The userbot connection lives in the server's memory and is dropped on
+  // every redeploy/restart, so the deployed site must reload it.
+  const reconnect = useCallback(async () => {
+    setReconnecting(true)
+    await messagingApi.telegram.reload()
+    await loadSettings()
+    setReconnecting(false)
+  }, [loadSettings])
+
+  useEffect(() => {
+    loadConversations()
+    loadSettings().then(s => {
+      // First time we land on the page disconnected → try once automatically.
+      if (s && !s.connected && !autoTried.current) {
+        autoTried.current = true
+        reconnect()
+      }
+    })
+  }, [loadSettings, loadConversations, reconnect])
 
   // Poll the conversation list so new replies / drafts surface on their own.
   useEffect(() => {
@@ -78,8 +100,16 @@ export function TelegramPage() {
         <div style={{
           margin: '0 24px 12px', padding: '12px 16px', borderRadius: 10,
           background: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E', fontSize: 13,
+          display: 'flex', alignItems: 'center', gap: 12,
         }}>
-          <strong>{t.notConnected}</strong> — {t.notConnectedHint}
+          <div style={{ flex: 1 }}>
+            <strong>{t.notConnected}</strong> — {t.notConnectedHint}
+          </div>
+          <button
+            className="btn btn-sm" disabled={reconnecting}
+            onClick={reconnect}
+            style={{ background: '#92400E', color: '#fff', border: 'none', flexShrink: 0 }}
+          >{reconnecting ? '…' : t.reconnect}</button>
         </div>
       )}
 
@@ -138,12 +168,9 @@ function Header({ settings, onChange, t, draftsTotal }: {
   t: typeof T['ua']['tg']
   draftsTotal: number
 }) {
-  const [calendly, setCalendly] = useState(settings.calendlyUrl)
-  const [savedFlash, setSavedFlash] = useState(false)
   const [showKnowledge, setShowKnowledge] = useState(false)
-  useEffect(() => { setCalendly(settings.calendlyUrl) }, [settings.calendlyUrl])
 
-  async function save(patch: Partial<Pick<TgBotSettings, 'enabled' | 'mode' | 'calendlyUrl'>>) {
+  async function save(patch: Partial<Pick<TgBotSettings, 'enabled' | 'mode'>>) {
     await telegramApi.saveSettings(patch)
     onChange()
   }
@@ -194,24 +221,6 @@ function Header({ settings, onChange, t, draftsTotal }: {
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Calendly link */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-        <input
-          value={calendly}
-          onChange={e => setCalendly(e.target.value)}
-          placeholder={t.calendlyLabel}
-          style={{
-            flex: 1, maxWidth: 420, padding: '7px 11px', borderRadius: 8, fontSize: 12.5,
-            border: '1px solid var(--border)', background: 'var(--surface-2)', boxSizing: 'border-box',
-          }}
-        />
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={async () => { await save({ calendlyUrl: calendly.trim() }); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1500) }}
-        >{savedFlash ? t.saved : t.save}</button>
-        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{t.calendlyHint}</span>
       </div>
 
       {showKnowledge && <KnowledgeModal t={t} onClose={() => setShowKnowledge(false)} />}
