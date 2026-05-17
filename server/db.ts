@@ -14,6 +14,9 @@ const STABLE_DATA_DIR = process.env.FARMASOFT_DATA_DIR
 
 fs.mkdirSync(STABLE_DATA_DIR, { recursive: true })
 
+// Exposed so the admin import endpoint can drop an uploaded DB here.
+export const DATA_DIR = STABLE_DATA_DIR
+
 const DB_PATH = path.join(STABLE_DATA_DIR, 'farmasoft.db')
 
 // One-time migration: if DB exists in legacy in-project location, copy it to the stable path
@@ -23,6 +26,22 @@ if (fs.existsSync(LEGACY_DB) && !fs.existsSync(DB_PATH)) {
     fs.copyFileSync(LEGACY_DB, DB_PATH)
     console.log(`[db] Migrated legacy DB → ${DB_PATH}`)
   } catch (e) { console.error('[db] Migration failed:', (e as Error).message) }
+}
+
+// Import-on-boot: a DB uploaded via POST /api/admin/import-db lands as
+// farmasoft.db.import — swap it in here, before any connection is opened, so a
+// full local database (settings, sessions, candidates…) can be restored.
+const IMPORT_DB = path.join(STABLE_DATA_DIR, 'farmasoft.db.import')
+if (fs.existsSync(IMPORT_DB)) {
+  try {
+    for (const suffix of ['-wal', '-shm']) {
+      const stale = DB_PATH + suffix
+      if (fs.existsSync(stale)) fs.rmSync(stale)
+    }
+    fs.rmSync(DB_PATH, { force: true })
+    fs.renameSync(IMPORT_DB, DB_PATH)
+    console.log('[db] Restored database from uploaded farmasoft.db.import')
+  } catch (e) { console.error('[db] Import failed:', (e as Error).message) }
 }
 
 console.log(`[db] Using ${DB_PATH}`)

@@ -15,6 +15,7 @@ import cvRouter from './routes/cv'
 import robotaRouter, { runFollowUps, runFullSync } from './routes/robota'
 import messagingRouter from './routes/messaging'
 import salaryRouter from './routes/salary'
+import adminRouter from './routes/admin'
 // work.ua integration disabled — their employer dashboard sits behind a
 // Cloudflare bot-management challenge with no interactive element, which
 // blocks any automated browser. Source kept dormant in routes/workua.ts +
@@ -60,6 +61,7 @@ api.use('/cv', cvRouter)
 api.use('/robota', robotaRouter)
 api.use('/messaging', messagingRouter)
 api.use('/salary', salaryRouter)
+api.use('/admin', adminRouter)
 // api.use('/workua', workuaRouter)  // disabled — see import note above
 app.use(`${PREFIX}/api`, api)
 
