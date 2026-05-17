@@ -18,10 +18,8 @@ services:
         value: /data
       - key: NODE_ENV
         value: production
-      # Sub-path the app is served under (behind the aether-connect.com proxy).
-      # Drives both the Vite build and the Express routes.
-      - key: BASE_PATH
-        value: /farmasoft/hr
+      # BASE_PATH left unset — the app is served at the root of its own
+      # subdomain (hr.aether-connect.com). Set it only to host under a sub-path.
       # Secrets — set these values in the Render dashboard (sync:false keeps them
       # out of the repo). VITE_API_SECRET must equal API_SECRET.
       - key: API_SECRET
