@@ -25,13 +25,15 @@ export function getBotSettings(): BotSettings {
   return {
     enabled:     (getSetting('tg_bot_enabled') ?? '1') === '1',
     mode:        (getSetting('tg_bot_mode') as 'review' | 'auto') ?? 'review',
-    calendlyUrl: getSetting('tg_calendly_url') ?? '',
+    // Reuse the Calendly link already configured for the rest of Farmasoft —
+    // no separate setup needed for the bot.
+    calendlyUrl: getSetting('calendly_url') ?? '',
   }
 }
 export function saveBotSettings(s: Partial<BotSettings>): void {
   if (s.enabled !== undefined)  setSetting('tg_bot_enabled', s.enabled ? '1' : '0')
   if (s.mode)                   setSetting('tg_bot_mode', s.mode)
-  if (s.calendlyUrl !== undefined) setSetting('tg_calendly_url', s.calendlyUrl)
+  if (s.calendlyUrl !== undefined) setSetting('calendly_url', s.calendlyUrl)
 }
 
 // ─── Knowledge base ──────────────────────────────────────────────────────────
