@@ -182,7 +182,41 @@ export function getDb(): DatabaseSync {
       result_json TEXT NOT NULL,
       computed_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+    -- Telegram recruiting-bot conversations (one per candidate outreach thread)
+    CREATE TABLE IF NOT EXISTS tg_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      candidate_id INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
+      job_id INTEGER REFERENCES jobs(id),
+      peer_id TEXT,                 -- Telegram user id (stored as string)
+      peer_username TEXT,
+      peer_phone TEXT,
+      status TEXT DEFAULT 'awaiting_reply',  -- awaiting_reply|bot_active|human|booked|closed
+      bot_enabled INTEGER DEFAULT 1,
+      last_seen_message_id INTEGER DEFAULT 0,
+      turn_count INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    -- Individual messages within a Telegram conversation
+    CREATE TABLE IF NOT EXISTS tg_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER REFERENCES tg_conversations(id) ON DELETE CASCADE,
+      direction TEXT NOT NULL,      -- in|out
+      sender TEXT NOT NULL,         -- candidate|bot|alena
+      text TEXT,
+      tg_message_id INTEGER,        -- Telegram's message id (null for unsent drafts)
+      status TEXT DEFAULT 'sent',   -- sent|pending_review|discarded
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      read_at DATETIME
+    );
   `)
+
+  // Anti-duplicate: never store the same inbound Telegram message twice.
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tg_messages_unique
+             ON tg_messages(conversation_id, tg_message_id)
+             WHERE tg_message_id IS NOT NULL`)
+  } catch { /* already exists */ }
 
   return db
 }

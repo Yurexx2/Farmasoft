@@ -23,6 +23,7 @@ import adminRouter from './routes/admin'
 // lib/workua/ in case work.ua ever drops the protection.
 // import workuaRouter from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
+import { telegramIsConnected } from './lib/messaging/telegram'
 import { apiAuth } from './middleware/auth'
 
 const app = express()
@@ -152,4 +153,18 @@ function startCron() {
       console.error('[cron] Follow-up error:', (e as Error).message)
     }
   }, 6 * 60 * 60 * 1000)
+
+  // Telegram self-heal every 5 min — the GramJS socket lives in memory and
+  // drops on restart/network blips; reconnect from the saved session (no code).
+  setInterval(async () => {
+    try {
+      const tg = db.prepare("SELECT value FROM settings WHERE key = 'telegram_session'").get() as { value: string } | undefined
+      if (tg?.value && !telegramIsConnected()) {
+        console.log('[cron] Telegram disconnected — reloading saved session')
+        await reloadTelegramSession().catch(e => console.error('[cron telegram]', (e as Error).message))
+      }
+    } catch (e) {
+      console.error('[cron] Telegram health error:', (e as Error).message)
+    }
+  }, 5 * 60 * 1000)
 }

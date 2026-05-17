@@ -4,7 +4,7 @@ import {
   getWhatsAppCreds, saveWhatsAppCreds, clearWhatsAppCreds,
   getViberCreds,    saveViberCreds,    clearViberCreds,
   saveTelegramCreds, clearTelegramCreds,
-  sendToCandidate, Channel,
+  sendToCandidate, Channel, reloadTelegramSession,
 } from '../lib/messaging'
 import { whatsappTest, whatsappSend } from '../lib/messaging/whatsapp'
 import { viberTest, viberSend } from '../lib/messaging/viber'
@@ -125,6 +125,17 @@ router.post('/telegram/disconnect', async (_req: Request, res: Response) => {
   await telegramDisconnect()
   clearTelegramCreds()
   res.json({ data: { ok: true } })
+})
+
+// Re-establish the live GramJS connection from the saved session — no code
+// needed. The connection is in-memory and is lost on every server restart.
+router.post('/telegram/reload', async (_req: Request, res: Response) => {
+  try {
+    await reloadTelegramSession()
+    res.json({ data: { connected: telegramIsConnected() } })
+  } catch (e: unknown) {
+    res.json({ error: (e as Error).message })
+  }
 })
 
 // ─── UNIFIED SEND ──────────────────────────────────────────────────────────
