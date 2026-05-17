@@ -35,17 +35,30 @@ export function saveBotSettings(s: Partial<BotSettings>): void {
 }
 
 // ─── Knowledge base ──────────────────────────────────────────────────────────
-let knowledgeCache: string | null = null
-function loadKnowledge(): string {
-  if (knowledgeCache !== null) return knowledgeCache
+// knowledge.md ships as the default; Alena can edit it anytime from the UI,
+// in which case the edited text is stored in settings and takes precedence.
+let fileKnowledgeCache: string | null = null
+function fileKnowledge(): string {
+  if (fileKnowledgeCache !== null) return fileKnowledgeCache
   try {
-    knowledgeCache = fs.readFileSync(path.join(__dirname, 'knowledge.md'), 'utf8')
+    fileKnowledgeCache = fs.readFileSync(path.join(__dirname, 'knowledge.md'), 'utf8')
   } catch {
-    knowledgeCache = ''
+    fileKnowledgeCache = ''
   }
-  return knowledgeCache
+  return fileKnowledgeCache
 }
-export function reloadKnowledge(): void { knowledgeCache = null }
+function loadKnowledge(): string {
+  return getSetting('tg_knowledge') ?? fileKnowledge()
+}
+/** The current knowledge base text (edited override, or the shipped default). */
+export function getKnowledgeText(): string {
+  return loadKnowledge()
+}
+/** Save an edited knowledge base. Empty string reverts to the shipped file. */
+export function saveKnowledgeText(text: string): void {
+  if (text.trim()) setSetting('tg_knowledge', text)
+  else getDb().prepare("DELETE FROM settings WHERE key = 'tg_knowledge'").run()
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface ConvRow {
@@ -293,17 +306,49 @@ export async function recoverMissed(): Promise<void> {
       if (newest > conv.last_seen_message_id) {
         db.prepare('UPDATE tg_conversations SET last_seen_message_id = ? WHERE id = ?').run(newest, conv.id)
       }
-      if (gotInbound) {
-        if (conv.status === 'awaiting_reply') {
-          db.prepare("UPDATE tg_conversations SET status = 'bot_active' WHERE id = ?").run(conv.id)
-        }
-        const settings = getBotSettings()
-        if (settings.enabled && conv.bot_enabled && !['human', 'booked', 'closed'].includes(conv.status)) {
-          await generateDraft(conv.id).catch(e => console.error('[tg-bot recover-draft]', (e as Error).message))
-        }
+      if (gotInbound && conv.status === 'awaiting_reply') {
+        db.prepare("UPDATE tg_conversations SET status = 'bot_active' WHERE id = ?").run(conv.id)
       }
     } catch (e) {
       console.error('[tg-bot recover]', conv.id, (e as Error).message)
+    }
+  }
+  // Now draft replies for every thread left with an unanswered candidate
+  // message — covers both freshly-recovered messages and any that arrived
+  // while the bot was switched off.
+  await processPendingConversations()
+}
+
+/**
+ * Find every conversation whose last message is an unanswered candidate
+ * message — with the bot enabled and no draft already waiting — and generate
+ * a reply. Run on startup and whenever the bot is (re-)enabled, so no message
+ * is ever left silently unanswered.
+ */
+export async function processPendingConversations(convId?: number): Promise<void> {
+  const settings = getBotSettings()
+  if (!settings.enabled) return
+  const db = getDb()
+  const convs = (convId
+    ? db.prepare('SELECT * FROM tg_conversations WHERE id = ?').all(convId)
+    : db.prepare("SELECT * FROM tg_conversations WHERE bot_enabled = 1 AND status IN ('awaiting_reply','bot_active')").all()
+  ) as unknown as ConvRow[]
+
+  for (const conv of convs) {
+    try {
+      if (!conv.bot_enabled || ['human', 'booked', 'closed'].includes(conv.status)) continue
+      const last = db.prepare(`
+        SELECT direction FROM tg_messages WHERE conversation_id = ? AND status = 'sent'
+        ORDER BY id DESC LIMIT 1
+      `).get(conv.id) as { direction: string } | undefined
+      if (last?.direction !== 'in') continue  // nothing waiting for a reply
+      const hasDraft = db.prepare(
+        "SELECT 1 FROM tg_messages WHERE conversation_id = ? AND status = 'pending_review' LIMIT 1",
+      ).get(conv.id)
+      if (hasDraft) continue
+      await generateDraft(conv.id)
+    } catch (e) {
+      console.error('[tg-bot pending]', conv.id, (e as Error).message)
     }
   }
 }

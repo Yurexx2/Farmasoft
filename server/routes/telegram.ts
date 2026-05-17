@@ -4,6 +4,7 @@ import { telegramIsConnected } from '../lib/messaging/telegram'
 import {
   getBotSettings, saveBotSettings,
   generateDraft, approveDraft, discardDraft, sendBotMessage,
+  processPendingConversations, getKnowledgeText, saveKnowledgeText,
 } from '../lib/telegram-bot/bot'
 
 const router = Router()
@@ -20,8 +21,32 @@ router.get('/settings', (_req: Request, res: Response) => {
 router.post('/settings', (req: Request, res: Response) => {
   try {
     const { enabled, mode, calendlyUrl } = req.body as { enabled?: boolean; mode?: 'review' | 'auto'; calendlyUrl?: string }
+    const wasEnabled = getBotSettings().enabled
     saveBotSettings({ enabled, mode, calendlyUrl })
+    // Re-enabling the bot must catch up on every unanswered candidate message.
+    if (enabled === true && !wasEnabled) {
+      processPendingConversations().catch(e => console.error('[tg pending]', (e as Error).message))
+    }
     res.json({ data: getBotSettings() })
+  } catch (e: unknown) {
+    res.json({ error: (e as Error).message })
+  }
+})
+
+// ─── Knowledge base — editable by Alena ──────────────────────────────────────
+router.get('/knowledge', (_req: Request, res: Response) => {
+  try {
+    res.json({ data: { text: getKnowledgeText() } })
+  } catch (e: unknown) {
+    res.json({ error: (e as Error).message })
+  }
+})
+
+router.post('/knowledge', (req: Request, res: Response) => {
+  try {
+    const { text } = req.body as { text: string }
+    saveKnowledgeText(text ?? '')
+    res.json({ data: { text: getKnowledgeText() } })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })
   }
@@ -104,6 +129,11 @@ router.post('/conversations/:id/bot', (req: Request, res: Response) => {
     const { enabled } = req.body as { enabled: boolean }
     db.prepare('UPDATE tg_conversations SET bot_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(enabled ? 1 : 0, id)
+    // Switching the bot back on for this thread should answer any message
+    // the candidate sent while it was off.
+    if (enabled) {
+      processPendingConversations(id).catch(e => console.error('[tg pending]', (e as Error).message))
+    }
     res.json({ data: { ok: true } })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })

@@ -50,6 +50,12 @@ export const T = {
       calendlyHint: 'The bot sends this link once a candidate is genuinely interested.',
       save: 'Save', saved: 'Saved',
       unread: 'new',
+      knowledge: 'Knowledge base',
+      knowledgeHint: 'Everything the bot knows about the company and how it should behave. Edit it anytime — changes apply to the next reply.',
+      knowledgeReset: 'Restore default',
+      knowledgeResetConfirm: 'Restore the default knowledge base? Your edits will be lost.',
+      close: 'Close',
+      draftsWaiting: (n: number) => `${n} draft${n !== 1 ? 's' : ''} to review`,
     },
 
     dashboard: {
@@ -482,6 +488,12 @@ export const T = {
       calendlyHint: 'Бот надсилає це посилання, щойно кандидат щиро зацікавлений.',
       save: 'Зберегти', saved: 'Збережено',
       unread: 'нові',
+      knowledge: 'База знань',
+      knowledgeHint: 'Усе, що бот знає про компанію та як він має поводитися. Редагуйте будь-коли — зміни діють із наступної відповіді.',
+      knowledgeReset: 'Відновити типову',
+      knowledgeResetConfirm: 'Відновити типову базу знань? Ваші зміни буде втрачено.',
+      close: 'Закрити',
+      draftsWaiting: (n: number) => `${n} чернет${n === 1 ? 'ка' : n < 5 ? 'ки' : 'ок'} на перевірку`,
     },
 
     dashboard: {

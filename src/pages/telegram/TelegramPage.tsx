@@ -64,6 +64,7 @@ export function TelegramPage() {
   }, [loadConversations])
 
   const selected = conversations.find(c => c.id === selectedId) || null
+  const draftsTotal = conversations.reduce((s, c) => s + (c.draft_count || 0), 0)
 
   if (!settings) {
     return <div style={{ padding: 40, color: 'var(--text-3)' }}>{T[uiLang].dashboard.loading}</div>
@@ -71,7 +72,7 @@ export function TelegramPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <Header settings={settings} onChange={loadSettings} t={t} />
+      <Header settings={settings} onChange={loadSettings} t={t} draftsTotal={draftsTotal} />
 
       {!settings.connected && (
         <div style={{
@@ -131,13 +132,15 @@ export function TelegramPage() {
 }
 
 // ─── header — title + global bot settings ──────────────────────────────────
-function Header({ settings, onChange, t }: {
+function Header({ settings, onChange, t, draftsTotal }: {
   settings: TgBotSettings
   onChange: () => void
   t: typeof T['ua']['tg']
+  draftsTotal: number
 }) {
   const [calendly, setCalendly] = useState(settings.calendlyUrl)
   const [savedFlash, setSavedFlash] = useState(false)
+  const [showKnowledge, setShowKnowledge] = useState(false)
   useEffect(() => { setCalendly(settings.calendlyUrl) }, [settings.calendlyUrl])
 
   async function save(patch: Partial<Pick<TgBotSettings, 'enabled' | 'mode' | 'calendlyUrl'>>) {
@@ -150,9 +153,17 @@ function Header({ settings, onChange, t }: {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: -0.3 }}>{t.title}</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-3)' }}>{t.desc}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--text-3)' }}>
+            {t.desc}
+            {draftsTotal > 0 && (
+              <span style={{ color: '#229ED9', fontWeight: 600 }}> · {t.draftsWaiting(draftsTotal)}</span>
+            )}
+          </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
+            📖 {t.knowledge}
+          </button>
           {/* Global on/off */}
           <button
             onClick={() => save({ enabled: !settings.enabled })}
@@ -201,6 +212,94 @@ function Header({ settings, onChange, t }: {
           onClick={async () => { await save({ calendlyUrl: calendly.trim() }); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1500) }}
         >{savedFlash ? t.saved : t.save}</button>
         <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{t.calendlyHint}</span>
+      </div>
+
+      {showKnowledge && <KnowledgeModal t={t} onClose={() => setShowKnowledge(false)} />}
+    </div>
+  )
+}
+
+// ─── knowledge base editor ──────────────────────────────────────────────────
+function KnowledgeModal({ t, onClose }: { t: typeof T['ua']['tg']; onClose: () => void }) {
+  const [text, setText] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
+
+  useEffect(() => {
+    telegramApi.knowledge().then(r => { setText(r.data?.text ?? ''); setLoading(false) })
+  }, [])
+
+  async function save(newText: string) {
+    setBusy(true)
+    const r = await telegramApi.saveKnowledge(newText)
+    if (r.data) setText(r.data.text)
+    setBusy(false)
+    setSavedFlash(true)
+    setTimeout(() => setSavedFlash(false), 1500)
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)',
+        zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--surface)', borderRadius: 16, width: 720, maxWidth: '96vw',
+          maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          padding: '18px 22px', borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{t.knowledge}</h2>
+            <p style={{ margin: '5px 0 0', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5, maxWidth: 540 }}>
+              {t.knowledgeHint}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-3)' }}>✕</button>
+        </div>
+
+        <div style={{ padding: 18, flex: 1, overflow: 'hidden', display: 'flex' }}>
+          {loading ? (
+            <div style={{ color: 'var(--text-3)', fontSize: 13 }}>…</div>
+          ) : (
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              spellCheck={false}
+              style={{
+                width: '100%', resize: 'none', padding: 14, borderRadius: 10, fontSize: 12.5,
+                border: '1px solid var(--border)', background: 'var(--surface-2)',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', lineHeight: 1.6,
+                boxSizing: 'border-box', minHeight: 380,
+              }}
+            />
+          )}
+        </div>
+
+        <div style={{
+          padding: '14px 22px', borderTop: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <button
+            className="btn btn-ghost btn-sm" disabled={busy}
+            onClick={() => { if (confirm(t.knowledgeResetConfirm)) save('') }}
+          >{t.knowledgeReset}</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>{t.close}</button>
+            <button className="btn btn-primary btn-sm" disabled={busy || loading} onClick={() => save(text)}>
+              {savedFlash ? t.saved : t.save}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -221,6 +221,9 @@ export const telegramApi = {
     req<{ ok: boolean }>(`/telegram/messages/${msgId}/approve`, { method: 'POST', ...body({ text }) }),
   discardDraft: (msgId: number) =>
     req<{ ok: boolean }>(`/telegram/messages/${msgId}/discard`, { method: 'POST' }),
+  knowledge: () => req<{ text: string }>('/telegram/knowledge'),
+  saveKnowledge: (text: string) =>
+    req<{ text: string }>('/telegram/knowledge', { method: 'POST', ...body({ text }) }),
 }
 
 export interface TgBotSettings {
