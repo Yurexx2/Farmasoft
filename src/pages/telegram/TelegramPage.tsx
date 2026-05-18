@@ -474,18 +474,17 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
         borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap',
+        justifyContent: 'flex-end',
       }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
-          <input
-            type="checkbox" checked={conv.bot_enabled === 1} disabled={busy}
-            onChange={e => act(() => telegramApi.toggleBot(convId, e.target.checked))}
-          />
-          {t.botForThread}
-        </label>
-        <span style={{ flex: 1 }} />
-        {conv.status !== 'human' && conv.status !== 'closed' && (
+        {/* Per-conversation control = who handles it. The bot mode (review /
+            automatic) is global, set from the header. */}
+        {(conv.status === 'bot_active' || conv.status === 'awaiting_reply') && (
           <button className="btn btn-ghost btn-sm" disabled={busy}
             onClick={() => act(() => telegramApi.setStatus(convId, 'human'))}>{t.markHuman}</button>
+        )}
+        {conv.status === 'human' && (
+          <button className="btn btn-ghost btn-sm" disabled={busy}
+            onClick={() => act(() => telegramApi.setStatus(convId, 'bot_active'))}>{t.giveToBot}</button>
         )}
         {conv.status !== 'closed' ? (
           <button className="btn btn-ghost btn-sm" disabled={busy}

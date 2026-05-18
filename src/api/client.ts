@@ -214,8 +214,6 @@ export const telegramApi = {
     req<{ conversation: TgConversationDetail; messages: TgMessage[] }>(`/telegram/conversations/${id}`),
   send: (id: number, text: string) =>
     req<{ ok: boolean }>(`/telegram/conversations/${id}/send`, { method: 'POST', ...body({ text }) }),
-  toggleBot: (id: number, enabled: boolean) =>
-    req<{ ok: boolean }>(`/telegram/conversations/${id}/bot`, { method: 'POST', ...body({ enabled }) }),
   setStatus: (id: number, status: string) =>
     req<{ ok: boolean }>(`/telegram/conversations/${id}/status`, { method: 'POST', ...body({ status }) }),
   regenerate: (id: number) =>

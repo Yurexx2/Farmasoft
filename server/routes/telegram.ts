@@ -142,26 +142,7 @@ router.post('/conversations/:id/send', async (req: Request, res: Response) => {
   }
 })
 
-// ─── POST /telegram/conversations/:id/bot — per-thread bot toggle ────────────
-router.post('/conversations/:id/bot', (req: Request, res: Response) => {
-  try {
-    const db = getDb()
-    const id = parseInt(req.params.id)
-    const { enabled } = req.body as { enabled: boolean }
-    db.prepare('UPDATE tg_conversations SET bot_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(enabled ? 1 : 0, id)
-    // Switching the bot back on for this thread should answer any message
-    // the candidate sent while it was off.
-    if (enabled) {
-      processPendingConversations(id).catch(e => console.error('[tg pending]', (e as Error).message))
-    }
-    res.json({ data: { ok: true } })
-  } catch (e: unknown) {
-    res.json({ error: (e as Error).message })
-  }
-})
-
-// ─── POST /telegram/conversations/:id/status — close / hand off / reopen ─────
+// ─── POST /telegram/conversations/:id/status — take over / give to bot / close
 router.post('/conversations/:id/status', (req: Request, res: Response) => {
   try {
     const db = getDb()
@@ -170,6 +151,11 @@ router.post('/conversations/:id/status', (req: Request, res: Response) => {
     const allowed = ['awaiting_reply', 'bot_active', 'human', 'booked', 'closed']
     if (!allowed.includes(status)) return res.json({ error: 'Statut invalide' })
     db.prepare('UPDATE tg_conversations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, id)
+    // Handing a conversation (back) to the bot should answer any message the
+    // candidate left while Alena was managing it.
+    if (status === 'bot_active') {
+      processPendingConversations(id).catch(e => console.error('[tg pending]', (e as Error).message))
+    }
     res.json({ data: { ok: true } })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })

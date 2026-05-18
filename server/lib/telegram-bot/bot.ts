@@ -155,11 +155,12 @@ export function handleInbound(msg: InboundTelegram): void {
     }
     logEvent('tg_inbound', conv.candidate_id, { conversationId: conv.id })
 
-    // Bot replies only if globally enabled, enabled for this thread, and the
-    // conversation has not been handed to Alena / booked / closed.
+    // Bot replies only if globally enabled and the conversation has not been
+    // taken over by Alena / booked / closed. There is no per-thread switch —
+    // Alena controls a single conversation with "Take over".
     const settings = getBotSettings()
     const handled = ['human', 'booked', 'closed'].includes(conv.status)
-    if (!settings.enabled || !conv.bot_enabled || handled) return
+    if (!settings.enabled || handled) return
 
     // Debounce: a candidate often sends several messages in a row.
     const prev = debounceTimers.get(conv.id)
@@ -187,7 +188,7 @@ export async function generateDraft(convId: number): Promise<void> {
   if (['human', 'booked', 'closed'].includes(conv.status)) return
 
   const settings = getBotSettings()
-  if (!settings.enabled || !conv.bot_enabled) return
+  if (!settings.enabled) return
 
   // Drop any earlier un-reviewed draft — the candidate has spoken since.
   db.prepare("UPDATE tg_messages SET status = 'discarded' WHERE conversation_id = ? AND status = 'pending_review'").run(convId)
@@ -344,12 +345,12 @@ export async function processPendingConversations(convId?: number): Promise<void
   const db = getDb()
   const convs = (convId
     ? db.prepare('SELECT * FROM tg_conversations WHERE id = ?').all(convId)
-    : db.prepare("SELECT * FROM tg_conversations WHERE bot_enabled = 1 AND status IN ('awaiting_reply','bot_active')").all()
+    : db.prepare("SELECT * FROM tg_conversations WHERE status IN ('awaiting_reply','bot_active')").all()
   ) as unknown as ConvRow[]
 
   for (const conv of convs) {
     try {
-      if (!conv.bot_enabled || ['human', 'booked', 'closed'].includes(conv.status)) continue
+      if (['human', 'booked', 'closed'].includes(conv.status)) continue
       const last = db.prepare(`
         SELECT direction FROM tg_messages WHERE conversation_id = ? AND status = 'sent'
         ORDER BY id DESC LIMIT 1
