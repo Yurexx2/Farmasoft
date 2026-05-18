@@ -229,6 +229,9 @@ export function getDb(): DatabaseSync {
   // memory and loses it on every restart, so we persist it to keep sending
   // working after a redeploy.
   try { db.exec('ALTER TABLE tg_conversations ADD COLUMN peer_access_hash TEXT') } catch { /* already exists */ }
+  // Unread flag — set when a candidate message arrives, cleared when Alena
+  // opens the thread.
+  try { db.exec('ALTER TABLE tg_conversations ADD COLUMN unread INTEGER DEFAULT 0') } catch { /* already exists */ }
 
   return db
 }

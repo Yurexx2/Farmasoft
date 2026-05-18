@@ -148,7 +148,7 @@ export function handleInbound(msg: InboundTelegram): void {
     const stored = insertMessage(conv.id, 'in', 'candidate', msg.text, msg.messageId, 'sent')
     if (!stored) return  // duplicate
 
-    db.prepare('UPDATE tg_conversations SET last_seen_message_id = MAX(last_seen_message_id, ?) WHERE id = ?')
+    db.prepare('UPDATE tg_conversations SET last_seen_message_id = MAX(last_seen_message_id, ?), unread = 1 WHERE id = ?')
       .run(msg.messageId, conv.id)
     if (conv.status === 'awaiting_reply') {
       db.prepare("UPDATE tg_conversations SET status = 'bot_active' WHERE id = ?").run(conv.id)
@@ -290,7 +290,7 @@ export async function sendBotMessage(
   if (!sent.ok) return { ok: false, error: sent.error }
 
   insertMessage(convId, 'out', sender, text, sent.messageId ?? null, 'sent')
-  db.prepare('UPDATE tg_conversations SET turn_count = turn_count + 1 WHERE id = ?').run(convId)
+  db.prepare('UPDATE tg_conversations SET turn_count = turn_count + 1, unread = 0 WHERE id = ?').run(convId)
   logEvent('tg_sent', conv.candidate_id, { conversationId: convId, sender })
   return { ok: true }
 }
@@ -316,8 +316,11 @@ export async function recoverMissed(): Promise<void> {
       if (newest > conv.last_seen_message_id) {
         db.prepare('UPDATE tg_conversations SET last_seen_message_id = ? WHERE id = ?').run(newest, conv.id)
       }
-      if (gotInbound && conv.status === 'awaiting_reply') {
-        db.prepare("UPDATE tg_conversations SET status = 'bot_active' WHERE id = ?").run(conv.id)
+      if (gotInbound) {
+        db.prepare('UPDATE tg_conversations SET unread = 1 WHERE id = ?').run(conv.id)
+        if (conv.status === 'awaiting_reply') {
+          db.prepare("UPDATE tg_conversations SET status = 'bot_active' WHERE id = ?").run(conv.id)
+        }
       }
     } catch (e) {
       console.error('[tg-bot recover]', conv.id, (e as Error).message)

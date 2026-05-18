@@ -259,6 +259,7 @@ export interface TgConversation {
   candidate_role: string | null
   candidate_photo: string | null
   peer_name: string | null
+  unread: number
   job_title: string | null
   last_text: string | null
   last_direction: 'in' | 'out' | null

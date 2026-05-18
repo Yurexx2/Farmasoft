@@ -111,7 +111,12 @@ export function TelegramPage() {
               conversations.map(c => (
                 <ConversationRow
                   key={c.id} conv={c} active={c.id === selectedId}
-                  locale={locale} t={t} onClick={() => setSelectedId(c.id)}
+                  locale={locale} t={t}
+                  onClick={() => {
+                    setSelectedId(c.id)
+                    // Clear the unread dot immediately (server clears it too).
+                    setConversations(prev => prev.map(x => x.id === c.id ? { ...x, unread: 0 } : x))
+                  }}
                 />
               ))
             )}
@@ -352,7 +357,10 @@ function ConversationRow({ conv, active, locale, t, onClick }: {
               padding: '1px 6px', borderRadius: 7,
             }}>{t.draftPending.split(' ')[0]}</span>
           )}
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[conv.status] || '#94A3B8' }} />
+          {/* Unread dot — appears on a new candidate message, clears on open. */}
+          {conv.unread === 1 && (
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
+          )}
         </div>
       </div>
     </div>

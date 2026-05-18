@@ -60,7 +60,7 @@ router.get('/conversations', (_req: Request, res: Response) => {
     const rows = db.prepare(`
       SELECT
         c.id, c.candidate_id, c.job_id, c.status, c.bot_enabled,
-        c.turn_count, c.created_at, c.updated_at, c.peer_name,
+        c.turn_count, c.created_at, c.updated_at, c.peer_name, c.unread,
         cand.full_name AS candidate_name, cand.full_name AS candidate_full_name,
         cand.role AS candidate_role, cand.photo_url AS candidate_photo,
         j.title AS job_title,
@@ -115,6 +115,8 @@ router.get('/conversations/:id', (req: Request, res: Response) => {
       WHERE c.id = ?
     `).get(id)
     if (!conv) return res.json({ error: 'Conversation introuvable' })
+    // Opening the thread marks it read.
+    db.prepare('UPDATE tg_conversations SET unread = 0 WHERE id = ?').run(id)
     const messages = db.prepare(`
       SELECT id, direction, sender, text, status, tg_message_id, created_at
       FROM tg_messages
