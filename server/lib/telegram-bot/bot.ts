@@ -199,6 +199,10 @@ export async function generateDraft(convId: number): Promise<void> {
   const job = conv.job_id
     ? db.prepare('SELECT title FROM jobs WHERE id = ?').get(conv.job_id) as { title: string } | undefined
     : undefined
+  // Live list of positions Farmasoft is currently recruiting for.
+  const openPositions = (db.prepare(
+    'SELECT title FROM jobs WHERE is_active = 1 AND deleted = 0 ORDER BY created_at DESC',
+  ).all() as { title: string }[]).map(j => j.title)
 
   const history = db.prepare(`
     SELECT direction, sender, text FROM tg_messages
@@ -209,6 +213,7 @@ export async function generateDraft(convId: number): Promise<void> {
   const system = buildSystemPrompt({
     candidateName: (candidate?.full_name || '') as string,
     jobTitle: job?.title || '',
+    openPositions,
     firstMessage: history.find(h => h.direction === 'out')?.text || '',
     calendlyUrl: settings.calendlyUrl,
     turnCount: conv.turn_count,
@@ -294,6 +299,8 @@ export async function deleteMessage(messageId: number): Promise<{ ok: boolean; e
 /**
  * Send a bot/Alena message to the candidate, simulating a human: mark the
  * chat read, show "typing…", pause proportionally to length, then send.
+ * A line break splits the text into separate Telegram messages — the way a
+ * person sends two short messages in a row.
  */
 export async function sendBotMessage(
   convId: number, text: string, sender: 'bot' | 'alena' = 'bot',
@@ -303,18 +310,24 @@ export async function sendBotMessage(
   if (!conv?.peer_id) return { ok: false, error: 'Conversation sans destinataire' }
   if (!telegramIsConnected()) return { ok: false, error: 'Telegram non connecté' }
 
-  await telegramMarkRead(conv.peer_id, conv.peer_access_hash)
-  await telegramSetTyping(conv.peer_id, conv.peer_access_hash)
-  // Human-like pause: ~45ms per character, clamped to 2–7s.
-  const pause = Math.min(7000, Math.max(2000, text.length * 45))
-  await new Promise(r => setTimeout(r, pause))
+  const parts = text.split(/\n+/).map(s => s.trim()).filter(Boolean)
+  if (parts.length === 0) return { ok: false, error: 'Message vide' }
 
-  const sent = await telegramSendToPeer(conv.peer_id, conv.peer_access_hash, text)
-  if (!sent.ok) return { ok: false, error: sent.error }
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    await telegramMarkRead(conv.peer_id, conv.peer_access_hash)
+    await telegramSetTyping(conv.peer_id, conv.peer_access_hash)
+    // Human-like pause: ~45ms per character, clamped to 1.5–6s.
+    const pause = Math.min(6000, Math.max(1500, part.length * 45))
+    await new Promise(r => setTimeout(r, pause))
 
-  insertMessage(convId, 'out', sender, text, sent.messageId ?? null, 'sent')
+    const sent = await telegramSendToPeer(conv.peer_id, conv.peer_access_hash, part)
+    if (!sent.ok) return { ok: false, error: sent.error }
+    insertMessage(convId, 'out', sender, part, sent.messageId ?? null, 'sent')
+  }
+
   db.prepare('UPDATE tg_conversations SET turn_count = turn_count + 1, unread = 0 WHERE id = ?').run(convId)
-  logEvent('tg_sent', conv.candidate_id, { conversationId: convId, sender })
+  logEvent('tg_sent', conv.candidate_id, { conversationId: convId, sender, parts: parts.length })
   return { ok: true }
 }
 
@@ -485,6 +498,7 @@ export async function importAllDialogs(): Promise<void> {
 function buildSystemPrompt(ctx: {
   candidateName: string
   jobTitle: string
+  openPositions: string[]
   firstMessage: string
   calendlyUrl: string
   turnCount: number
@@ -500,9 +514,18 @@ function buildSystemPrompt(ctx: {
 ## Поточний контекст розмови
 
 - Кандидат: ${ctx.candidateName || 'невідомо'}
-- Вакансія: ${ctx.jobTitle || 'невідомо'}
+- Вакансія цієї розмови: ${ctx.jobTitle || 'невідомо'}
 - Перше повідомлення, яке Альона вже надіслала кандидату:
   «${ctx.firstMessage || '(невідомо)'}»
+
+## Відкриті вакансії у Farmasoft зараз
+
+${ctx.openPositions.length
+  ? ctx.openPositions.map(p => `• ${p}`).join('\n')
+  : 'Наразі немає активних вакансій.'}
+
+Це актуальний перелік посад, на які компанія шукає людей просто зараз.
+Якщо кандидат питає, які є вакансії, спирайся саме на цей перелік.
 
 ${calendly}
 
@@ -517,7 +540,14 @@ ${calendly}
   розмову далі до своєї мети.
 - Пиши так, ніби продовжуєш живий діалог, а не зачитуєш скрипт. Спирайся на
   те, що вже було сказано, не повторюйся.
+- ЗАВЖДИ звертайся до кандидата ввічливо, на «Ви» (з великої літери). НІКОЛИ
+  не звертайся на «ти» — це непрофесійно.
 - Завжди відповідай українською, навіть якщо кандидат пише іншою мовою.
+- Емодзі вживай ДУЖЕ рідко й щоразу різні. Не став той самий смайлик у
+  кожному повідомленні — найчастіше краще взагалі без емодзі.
+- Якщо хочеш надіслати дві короткі думки, постав між ними один перенос рядка
+  (\\n) — система надішле їх як два окремі повідомлення, як робить жива людина.
+  Не пиши довгих абзаців; усередині одного повідомлення переносів рядка не став.
 - Якщо в повідомленні кандидата стоїть позначка [стікер], [фото], [голосове
   повідомлення] тощо — це означає, що він надіслав таку вкладку. Реагуй на це
   природно й по-людськи, але НЕ пиши ці позначки у своїй відповіді.
