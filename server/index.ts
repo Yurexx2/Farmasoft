@@ -88,6 +88,9 @@ if (process.env.NODE_ENV === 'production') {
       '</head>',
       `<script>window.__FARMASOFT_API_KEY__=${JSON.stringify(key)}</script></head>`,
     )
+    // Never cache index.html — it points at hash-named JS/CSS bundles, so a
+    // stale copy would keep loading an old frontend after a redeploy.
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
     res.type('html').send(html)
   })
 }

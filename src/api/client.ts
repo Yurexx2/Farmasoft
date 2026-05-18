@@ -11,8 +11,11 @@ async function req<T>(url: string, options?: RequestInit): Promise<{ data?: T; e
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (API_KEY) headers['x-api-key'] = API_KEY
+    // no-store — API responses must never be served from the browser cache,
+    // otherwise a stale (or transiently empty) response keeps coming back.
     const res = await fetch(`${BASE}${url}`, {
       headers,
+      cache: 'no-store',
       ...options,
     })
     const json = await res.json()
@@ -42,7 +45,7 @@ async function reqPublish(
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (API_KEY) headers['x-api-key'] = API_KEY
-    const res = await fetch(`${BASE}${url}`, { headers, ...options })
+    const res = await fetch(`${BASE}${url}`, { headers, cache: 'no-store', ...options })
     const json = await res.json()
     if (!res.ok) return { error: json.error || `HTTP ${res.status}`, publication_failure: json.publication_failure }
     return json
