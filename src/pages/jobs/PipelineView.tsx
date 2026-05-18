@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { T } from '../../i18n'
 import { iconChevronLeft } from './icons'
 import { PipelineCard } from './PipelineCard'
+import { KanbanView } from './KanbanView'
 import { CandidateModal } from './CandidateModal'
 import { AddCandidatePanel } from './AddCandidatePanel'
 import { RobotaSyncModal } from './RobotaSyncModal'
@@ -21,6 +22,13 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
   const [search, setSearch] = useState('')
   const [sourceTab, setSourceTab] = useState<'applicants' | 'sourced'>('applicants')
+  const [viewMode, setViewMode] = useState<'grid' | 'kanban'>(
+    () => (localStorage.getItem('farmasoft_pipeline_view') as 'grid' | 'kanban') || 'grid',
+  )
+  function setView(m: 'grid' | 'kanban') {
+    setViewMode(m)
+    localStorage.setItem('farmasoft_pipeline_view', m)
+  }
   const [batchQualifying, setBatchQualifying] = useState(false)
   const [qualifyProgress, setQualifyProgress] = useState<{ done: number; total: number } | null>(null)
   const [showRobotaSync, setShowRobotaSync] = useState(false)
@@ -187,9 +195,9 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
           <SalaryBanner jobId={job.id} state={salary} />
         </div>
 
-        {/* Source tabs */}
+        {/* Source tabs + view-mode toggle */}
         <div style={{
-          display: 'flex', gap: 0, marginBottom: sectionGap,
+          display: 'flex', gap: 0, marginBottom: sectionGap, alignItems: 'flex-end',
           borderBottom: '1px solid var(--border)',
         }}>
           {([
@@ -215,6 +223,22 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
               }}>{n}</span>
             </button>
           ))}
+          {/* view-mode toggle — Grid / Kanban */}
+          <div style={{
+            marginLeft: 'auto', marginBottom: 6, display: 'flex',
+            border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden',
+          }}>
+            {(['grid', 'kanban'] as const).map(m => (
+              <button
+                key={m} onClick={() => setView(m)}
+                style={{
+                  padding: '5px 12px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: viewMode === m ? 'var(--accent)' : 'var(--surface)',
+                  color: viewMode === m ? '#fff' : 'var(--text-2)',
+                }}
+              >{m === 'grid' ? T[uiLang].kanban.grid : T[uiLang].kanban.board}</button>
+            ))}
+          </div>
         </div>
 
         {/* Search bar */}
@@ -274,6 +298,14 @@ export function PipelineView({ job, onBack }: { job: Job; onBack: () => void }) 
           <p className="t-13 c-2">{tj.noCandidates}</p>
           <p className="t-12 c-3">{tj.noCandidatesHint}</p>
         </div>
+      ) : viewMode === 'kanban' ? (
+        /* ── Kanban view ── */
+        <KanbanView
+          candidates={filtered}
+          t={T[uiLang].kanban}
+          onCardClick={setSelectedCandidate}
+          onMoved={updated => setCandidates(prev => prev.map(x => x.id === updated.id ? updated : x))}
+        />
       ) : filtered.length === 0 ? (
         <div className="empty-state"><p className="t-13 c-2">{tp.noMatch}</p></div>
       ) : (

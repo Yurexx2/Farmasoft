@@ -91,6 +91,27 @@ router.put('/:id/stage', (req: Request, res: Response) => {
   }
 })
 
+// Move a candidate to a Kanban column — sets status/stage/decision in one go.
+const KANBAN: Record<string, { status: string; stage: string; decision: string }> = {
+  tocontact:   { status: 'viewed',    stage: 'new',      decision: 'pending' },
+  contacted:   { status: 'contacted', stage: 'new',      decision: 'pending' },
+  interviewed: { status: 'contacted', stage: 'interview', decision: 'pending' },
+  accepted:    { status: 'contacted', stage: 'decision', decision: 'hire' },
+  rejected:    { status: 'rejected',  stage: 'decision', decision: 'reject' },
+}
+router.put('/:id/kanban', (req: Request, res: Response) => {
+  try {
+    const db = getDb()
+    const m = KANBAN[(req.body as { column: string }).column]
+    if (!m) return res.json({ error: 'Colonne invalide' })
+    db.prepare('UPDATE candidates SET status = ?, stage = ?, decision = ? WHERE id = ?')
+      .run(m.status, m.stage, m.decision, req.params.id)
+    res.json({ data: db.prepare('SELECT * FROM candidates WHERE id = ?').get(req.params.id) })
+  } catch (err: unknown) {
+    res.json({ error: (err as Error).message })
+  }
+})
+
 router.put('/:id/rejection-reason', (req: Request, res: Response) => {
   try {
     const db = getDb()

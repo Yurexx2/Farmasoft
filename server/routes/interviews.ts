@@ -8,13 +8,13 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb()
     const { jobId } = req.query
     const sql = jobId
-      ? `SELECT i.*, c.initials, c.role, c.source_platform, j.title as job_title
+      ? `SELECT i.*, c.initials, c.full_name, c.role, c.source_platform, j.title as job_title
          FROM interviews i
          LEFT JOIN candidates c ON c.id = i.candidate_id
          LEFT JOIN jobs j ON j.id = i.job_id
          WHERE i.job_id = ?
          ORDER BY i.scheduled_at ASC`
-      : `SELECT i.*, c.initials, c.role, c.source_platform, j.title as job_title
+      : `SELECT i.*, c.initials, c.full_name, c.role, c.source_platform, j.title as job_title
          FROM interviews i
          LEFT JOIN candidates c ON c.id = i.candidate_id
          LEFT JOIN jobs j ON j.id = i.job_id
@@ -41,7 +41,7 @@ router.post('/', (req: Request, res: Response) => {
     db.prepare("UPDATE candidates SET stage = 'interview' WHERE id = ?").run(candidate_id)
 
     const interview = db.prepare(`
-      SELECT i.*, c.initials, c.role, c.source_platform, j.title as job_title
+      SELECT i.*, c.initials, c.full_name, c.role, c.source_platform, j.title as job_title
       FROM interviews i
       LEFT JOIN candidates c ON c.id = i.candidate_id
       LEFT JOIN jobs j ON j.id = i.job_id
@@ -71,7 +71,7 @@ router.put('/:id', (req: Request, res: Response) => {
     `).run(scheduled_at || null, type || null, interviewer ?? null, notes ?? null, decision || null, id)
 
     const interview = db.prepare(`
-      SELECT i.*, c.initials, c.role, c.source_platform, j.title as job_title
+      SELECT i.*, c.initials, c.full_name, c.role, c.source_platform, j.title as job_title
       FROM interviews i
       LEFT JOIN candidates c ON c.id = i.candidate_id
       LEFT JOIN jobs j ON j.id = i.job_id

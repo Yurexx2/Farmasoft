@@ -191,7 +191,7 @@ export function Dashboard() {
         <div style={{ background: 'var(--surface)', borderRadius: 16, padding: '22px 26px', boxShadow: 'var(--shadow)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>{d.todayInterviews}</span>
-            <button onClick={() => setPage('jobs')} style={{
+            <button onClick={() => setPage('calendar')} style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontSize: 12, color: 'var(--accent)', fontWeight: 500,
             }}>

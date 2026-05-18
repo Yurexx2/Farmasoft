@@ -84,6 +84,8 @@ export const api = {
       req<Candidate>(`/candidates/${id}/status`, { method: 'PUT', ...body({ status }) }),
     updateStage: (id: number, stage: string) =>
       req<Candidate>(`/candidates/${id}/stage`, { method: 'PUT', ...body({ stage }) }),
+    setKanban: (id: number, column: string) =>
+      req<Candidate>(`/candidates/${id}/kanban`, { method: 'PUT', ...body({ column }) }),
     updateRejectionReason: (id: number, rejection_reason: string) =>
       req<Candidate>(`/candidates/${id}/rejection-reason`, { method: 'PUT', ...body({ rejection_reason }) }),
     qualify: (id: number) =>
@@ -216,6 +218,15 @@ export const messagingApi = {
 
   send: (candidateId: number, params: { message: string; ctaUrl?: string; channels: ('telegram'|'whatsapp'|'viber'|'email')[]; stopOnFirstSuccess?: boolean }) =>
     req<Array<{ channel: string; ok: boolean; id?: string; error?: string }>>(`/messaging/send/${candidateId}`, { method: 'POST', ...body(params) }),
+}
+
+// ─── Calendar / Calendly ─────────────────────────────────────────────────
+export const calendarApi = {
+  status: () => req<{ connected: boolean; calendlyUrl: string }>('/calendar/status'),
+  connect: (token: string) =>
+    req<{ ok: boolean; name?: string }>('/calendar/connect', { method: 'POST', ...body({ token }) }),
+  disconnect: () => req<{ ok: boolean }>('/calendar/disconnect', { method: 'POST' }),
+  sync: () => req<{ ok: boolean }>('/calendar/sync', { method: 'POST' }),
 }
 
 // ─── Telegram recruiting bot ─────────────────────────────────────────────
@@ -416,8 +427,10 @@ export interface Interview {
   decision: 'pending' | 'hire' | 'reject'
   created_at: string
   updated_at: string
+  calendly_event_uri?: string | null
   // Joined fields
   initials?: string
+  full_name?: string | null
   role?: string
   source_platform?: string
   job_title?: string

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore, Page } from '../../store/useAppStore'
 import { T } from '../../i18n'
-import { api, RobotaConfig, messagingApi, MessagingStatus } from '../../api/client'
+import { api, RobotaConfig, messagingApi, MessagingStatus, calendarApi } from '../../api/client'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 interface NavItem { id: Page; label: string; icon: JSX.Element }
@@ -35,6 +35,12 @@ const iconFile = (
 const iconTelegramNav = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
     <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
+  </svg>
+)
+const iconCalendar = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="12" height="11" rx="1.5" />
+    <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" />
   </svg>
 )
 
@@ -617,31 +623,47 @@ function EmailConnectModal({ onClose }: { onClose: () => void }) {
 
 function CalendlyConnectModal({ initial, onClose }: { initial: string; onClose: () => void }) {
   const [url, setUrl] = useState(initial)
+  const [token, setToken] = useState('')
+  const [tokenConnected, setTokenConnected] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    calendarApi.status().then(r => { if (r.data) setTokenConnected(r.data.connected) })
+  }, [])
+
   async function save() {
-    if (!url.trim()) return
-    if (!url.startsWith('https://calendly.com/') && !url.startsWith('http')) {
-      setError('L\'URL doit commencer par https://calendly.com/...'); return
-    }
     setLoading(true); setError('')
-    const r = await api.robota.saveConfig({ calendly_url: url.trim() })
+    if (url.trim()) {
+      const r = await api.robota.saveConfig({ calendly_url: url.trim() })
+      if (r.error) { setError(r.error); setLoading(false); return }
+    }
+    if (token.trim()) {
+      const r = await calendarApi.connect(token.trim())
+      if (r.error) { setError(r.error); setLoading(false); return }
+    }
     setLoading(false)
-    if (r.error) setError(r.error)
-    else onClose()
+    onClose()
   }
 
   return (
     <ModalShell title="Configure Calendly" onClose={onClose}>
       <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 14 }}>
-        Calendly link used for booking interviews. Automatically added to generated messages (except Viber, which uses a separate CTA button).
+        Calendly link used for booking interviews. The API key powers the Calendar tab — it pulls bookings into the schedule.
       </p>
       <Field label="Calendly URL" value={url} onChange={setUrl} placeholder="https://calendly.com/yourname/30min" />
+      <Field
+        label={tokenConnected ? 'API key — connected ✓' : 'API key (Personal Access Token)'}
+        value={token} onChange={setToken} type="password"
+        placeholder={tokenConnected ? '•••••• (leave empty to keep current)' : 'eyJraWQiOi...'}
+      />
+      <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: -4 }}>
+        Calendly → Integrations → API &amp; Webhooks → Personal Access Tokens.
+      </p>
       {error && <p style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{error}</p>}
       <div className="flex gap-8 justify-end mt-16">
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary btn-sm" onClick={save} disabled={loading || !url.trim()}>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={loading || (!url.trim() && !token.trim())}>
           {loading ? 'Saving…' : 'Save'}
         </button>
       </div>
@@ -677,6 +699,7 @@ export function Sidebar() {
     { id: 'dashboard', label: t.nav.dashboard, icon: iconDashboard },
     { id: 'jobs',      label: t.nav.jobs,      icon: iconFile },
     { id: 'telegram',  label: t.nav.telegram,  icon: iconTelegramNav },
+    { id: 'calendar',  label: t.nav.calendar,  icon: iconCalendar },
   ]
 
   // Desktop collapsed rail — never used on mobile (mobile uses the drawer below).

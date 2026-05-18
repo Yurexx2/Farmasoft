@@ -18,6 +18,7 @@ import messagingRouter from './routes/messaging'
 import salaryRouter from './routes/salary'
 import adminRouter from './routes/admin'
 import telegramBotRouter from './routes/telegram'
+import calendarRouter, { syncCalendly } from './routes/calendar'
 // work.ua integration disabled — their employer dashboard sits behind a
 // Cloudflare bot-management challenge with no interactive element, which
 // blocks any automated browser. Source kept dormant in routes/workua.ts +
@@ -67,6 +68,7 @@ api.use('/messaging', messagingRouter)
 api.use('/salary', salaryRouter)
 api.use('/admin', adminRouter)
 api.use('/telegram', telegramBotRouter)
+api.use('/calendar', calendarRouter)
 // api.use('/workua', workuaRouter)  // disabled — see import note above
 app.use(`${PREFIX}/api`, api)
 
@@ -129,6 +131,9 @@ app.listen(PORT, () => {
     runFullSync().catch(e => console.error('[startup full-sync]', (e as Error).message))
   }
 
+  // Pull Calendly bookings into the interviews table on boot.
+  syncCalendly().catch(e => console.error('[startup calendly]', (e as Error).message))
+
   // Route every inbound Telegram private message into the recruiting bot,
   // and mirror message deletions made in the Telegram app.
   onTelegramInbound(handleInbound)
@@ -161,6 +166,16 @@ function startCron() {
       console.error('[cron] Auto-sync error:', (e as Error).message)
     }
   }, 15 * 60 * 1000)
+
+  // Calendly sync every 10 min — turns new bookings into interviews and moves
+  // candidates to the interview stage.
+  setInterval(async () => {
+    try {
+      await syncCalendly()
+    } catch (e) {
+      console.error('[cron] Calendly sync error:', (e as Error).message)
+    }
+  }, 10 * 60 * 1000)
 
   // Follow-up check every 6 hours
   setInterval(async () => {

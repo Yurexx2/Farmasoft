@@ -154,6 +154,8 @@ export function getDb(): DatabaseSync {
   try { db.exec("ALTER TABLE jobs ADD COLUMN languages TEXT DEFAULT '[]'") } catch { /* already exists */ }
   try { db.exec('ALTER TABLE jobs ADD COLUMN robota_state TEXT') } catch { /* already exists */ }
   try { db.exec('ALTER TABLE jobs ADD COLUMN robota_error TEXT') } catch { /* already exists */ }
+  // Calendly event URI — links a Farmasoft interview to its Calendly booking.
+  try { db.exec('ALTER TABLE interviews ADD COLUMN calendly_event_uri TEXT') } catch { /* already exists */ }
   // Hard-delete flag — a job the user removed via the trash icon. Distinct from
   // is_active=0 (a paused job that still shows in the list). deleted=1 jobs are
   // excluded from every list query and are never resurrected by the robota sync.

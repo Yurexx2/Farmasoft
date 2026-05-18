@@ -13,8 +13,24 @@ export const T = {
       prospecting: 'Prospecting',
       cvSearch: 'CV Search',
       telegram: 'Telegram',
+      calendar: 'Calendar',
     },
     user: { name: 'User', role: 'Admin' },
+
+    calendar: {
+      title: 'Calendar',
+      desc: 'Interview schedule, synced with Calendly',
+      today: 'Today',
+      sync: 'Sync', syncing: 'Syncing…',
+      notConnected: 'Calendly API not connected — add the API key from the profile menu (Calendly card) to pull bookings into the schedule.',
+      noEvents: 'No appointments this week',
+    },
+
+    kanban: {
+      grid: 'Grid', board: 'Kanban',
+      tocontact: 'To contact', contacted: 'Contacted', interviewed: 'Interviewed',
+      accepted: 'Accepted', rejected: 'Rejected',
+    },
 
     tg: {
       title: 'Telegram bot',
@@ -463,8 +479,24 @@ export const T = {
       prospecting: 'Проспектинг',
       cvSearch: 'Пошук CV',
       telegram: 'Telegram',
+      calendar: 'Календар',
     },
     user: { name: 'Користувач', role: 'Адмін' },
+
+    calendar: {
+      title: 'Календар',
+      desc: 'Розклад співбесід, синхронізований з Calendly',
+      today: 'Сьогодні',
+      sync: 'Синхронізувати', syncing: 'Синхронізація…',
+      notConnected: 'API Calendly не підключено — додайте ключ API у меню профілю (картка Calendly), щоб бачити записи в розкладі.',
+      noEvents: 'Цього тижня зустрічей немає',
+    },
+
+    kanban: {
+      grid: 'Сітка', board: 'Канбан',
+      tocontact: 'Зв’язатися', contacted: 'Зв’язалися', interviewed: 'Співбесіда',
+      accepted: 'Прийнято', rejected: 'Відхилено',
+    },
 
     tg: {
       title: 'Telegram-бот',
