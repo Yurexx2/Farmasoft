@@ -489,6 +489,7 @@ export interface TgDialog {
   name: string
   username?: string
   phone?: string
+  complete: boolean      // true when the whole history fit in the fetch
   messages: TgDialogMsg[]
 }
 
@@ -517,6 +518,7 @@ export async function telegramFetchDialogs(
       const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
         || user.username || String(user.id)
       const msgs = await activeClient.getMessages(entity as never, { limit: msgsPerDialog })
+      const total = (msgs as unknown as { total?: number }).total ?? msgs.length
       const messages: TgDialogMsg[] = msgs
         .map(m => ({ id: m.id, text: messageText(m), out: !!m.out, date: m.date || 0 }))
         .filter(m => m.text.length > 0)
@@ -527,6 +529,7 @@ export async function telegramFetchDialogs(
         name,
         username: user.username || undefined,
         phone: user.phone || undefined,
+        complete: total <= msgsPerDialog,
         messages,
       })
     } catch (e) {

@@ -497,16 +497,25 @@ export async function importAllDialogs(): Promise<void> {
           )
           if (m.id > maxId) maxId = m.id
         }
-        // Reconcile deletions: drop local messages that are no longer on
-        // Telegram within the fetched window (deleted while offline).
+        // Reconcile deletions: drop local messages no longer on Telegram.
+        // When the whole history fits in the fetched window (total ≤ limit)
+        // anything missing was deleted; otherwise only reconcile within the
+        // fetched id range to avoid removing older, un-fetched messages.
         const fetchedIds = dlg.messages.map(m => m.id)
         if (fetchedIds.length) {
           const ph = fetchedIds.map(() => '?').join(',')
-          db.prepare(`
-            DELETE FROM tg_messages WHERE conversation_id = ?
-            AND tg_message_id IS NOT NULL AND tg_message_id >= ?
-            AND tg_message_id NOT IN (${ph})
-          `).run(convId, Math.min(...fetchedIds), ...fetchedIds)
+          if (dlg.complete) {
+            db.prepare(`
+              DELETE FROM tg_messages WHERE conversation_id = ?
+              AND tg_message_id IS NOT NULL AND tg_message_id NOT IN (${ph})
+            `).run(convId, ...fetchedIds)
+          } else {
+            db.prepare(`
+              DELETE FROM tg_messages WHERE conversation_id = ?
+              AND tg_message_id IS NOT NULL AND tg_message_id >= ?
+              AND tg_message_id NOT IN (${ph})
+            `).run(convId, Math.min(...fetchedIds), ...fetchedIds)
+          }
         }
         db.prepare(
           'UPDATE tg_conversations SET last_seen_message_id = MAX(last_seen_message_id, ?) WHERE id = ?',
