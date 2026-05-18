@@ -374,7 +374,9 @@ export async function telegramFetchDialogs(
         id: unknown; firstName?: string; lastName?: string
         username?: string; phone?: string; bot?: boolean; self?: boolean
       }
-      if (user.bot || user.self) continue
+      // Skip bots, the account's own Saved Messages, and the official
+      // Telegram service account (id 777000 — login codes / notifications).
+      if (user.bot || user.self || String(user.id) === '777000') continue
       const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
         || user.username || String(user.id)
       const msgs = await activeClient.getMessages(entity as never, { limit: msgsPerDialog })
