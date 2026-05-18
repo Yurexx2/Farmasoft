@@ -142,8 +142,19 @@ const debounceTimers = new Map<number, NodeJS.Timeout>()
 export function handleInbound(msg: InboundTelegram): void {
   try {
     const db = getDb()
-    const conv = db.prepare('SELECT * FROM tg_conversations WHERE peer_id = ?').get(msg.peerId) as ConvRow | undefined
-    if (!conv) return  // not a candidate we started a thread with — ignore
+    let conv = db.prepare('SELECT * FROM tg_conversations WHERE peer_id = ?').get(msg.peerId) as ConvRow | undefined
+    if (!conv) {
+      // A new person wrote to Alena — open the conversation right away.
+      const r = db.prepare(`
+        INSERT INTO tg_conversations
+          (peer_id, peer_access_hash, peer_name, peer_username, peer_phone, status, bot_enabled)
+        VALUES (?, ?, ?, ?, ?, 'awaiting_reply', 1)
+      `).run(msg.peerId, msg.accessHash ?? null, msg.name ?? null, msg.username ?? null, msg.phone ?? null)
+      conv = db.prepare('SELECT * FROM tg_conversations WHERE id = ?').get(r.lastInsertRowid) as unknown as ConvRow
+    } else if (!conv.peer_access_hash && msg.accessHash) {
+      // Backfill the access hash so the bot can reply after a restart.
+      db.prepare('UPDATE tg_conversations SET peer_access_hash = ? WHERE id = ?').run(msg.accessHash, conv.id)
+    }
 
     const stored = insertMessage(conv.id, 'in', 'candidate', msg.text, msg.messageId, 'sent')
     if (!stored) return  // duplicate
@@ -428,8 +439,12 @@ export async function importAllDialogs(): Promise<void> {
           db.prepare(`
             UPDATE tg_conversations SET peer_name = ?, peer_username = ?,
             peer_access_hash = COALESCE(?, peer_access_hash),
-            peer_phone = COALESCE(peer_phone, ?) WHERE id = ?
-          `).run(dlg.name, dlg.username ?? null, dlg.accessHash ?? null, dlg.phone ?? null, convId)
+            peer_phone = COALESCE(peer_phone, ?),
+            candidate_id = COALESCE(candidate_id, ?),
+            job_id = COALESCE(job_id, ?)
+            WHERE id = ?
+          `).run(dlg.name, dlg.username ?? null, dlg.accessHash ?? null, dlg.phone ?? null,
+                 match?.id ?? null, match?.job_id ?? null, convId)
         } else {
           const r = db.prepare(`
             INSERT INTO tg_conversations

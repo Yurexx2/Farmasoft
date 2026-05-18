@@ -39,6 +39,10 @@ export interface InboundTelegram {
   messageId: number
   text: string
   date: number   // unix seconds
+  name?: string
+  username?: string
+  phone?: string
+  accessHash?: string
 }
 type InboundCb = (msg: InboundTelegram) => void
 let inboundCb: InboundCb | null = null
@@ -48,7 +52,7 @@ export function onTelegramInbound(cb: InboundCb): void {
 }
 
 function attachInboundHandler(client: TelegramClient): void {
-  client.addEventHandler((event: NewMessageEvent) => {
+  client.addEventHandler(async (event: NewMessageEvent) => {
     try {
       const msg = event.message
       // Only candidate→us private messages. Skip our own outgoing ones.
@@ -56,11 +60,30 @@ function attachInboundHandler(client: TelegramClient): void {
       if (!event.isPrivate) return
       const senderId = msg.senderId
       if (!senderId) return
+
+      // Resolve the sender so a brand-new chat can be opened with a real name.
+      let name: string | undefined, username: string | undefined
+      let phone: string | undefined, accessHash: string | undefined
+      try {
+        const getSender = (msg as unknown as { getSender?: () => Promise<unknown> }).getSender
+        const s = (getSender ? await getSender.call(msg) : undefined) as {
+          firstName?: string; lastName?: string; username?: string
+          phone?: string; accessHash?: unknown
+        } | undefined
+        if (s) {
+          name = [s.firstName, s.lastName].filter(Boolean).join(' ').trim() || s.username || undefined
+          username = s.username || undefined
+          phone = s.phone || undefined
+          accessHash = s.accessHash != null ? String(s.accessHash) : undefined
+        }
+      } catch { /* sender lookup failed — proceed with the id alone */ }
+
       inboundCb?.({
         peerId: String(senderId),
         messageId: msg.id,
         text: msg.message || '',
         date: msg.date || Math.floor(Date.now() / 1000),
+        name, username, phone, accessHash,
       })
     } catch (e) {
       console.error('[telegram inbound]', (e as Error).message)
