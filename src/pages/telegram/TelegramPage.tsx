@@ -259,7 +259,7 @@ function KnowledgeModal({ t, onClose }: { t: typeof T['ua']['tg']; onClose: () =
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--surface)', borderRadius: 16, width: 720, maxWidth: '96vw',
-          maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
         <div style={{
@@ -275,7 +275,7 @@ function KnowledgeModal({ t, onClose }: { t: typeof T['ua']['tg']; onClose: () =
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text-3)' }}>✕</button>
         </div>
 
-        <div style={{ padding: 18, flex: 1, overflow: 'hidden', display: 'flex' }}>
+        <div style={{ padding: 18, flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex' }}>
           {loading ? (
             <div style={{ color: 'var(--text-3)', fontSize: 13 }}>…</div>
           ) : (
@@ -284,10 +284,11 @@ function KnowledgeModal({ t, onClose }: { t: typeof T['ua']['tg']; onClose: () =
               onChange={e => setText(e.target.value)}
               spellCheck={false}
               style={{
-                width: '100%', resize: 'none', padding: 14, borderRadius: 10, fontSize: 12.5,
+                flex: 1, width: '100%', height: '100%', resize: 'none', overflowY: 'auto',
+                padding: 14, borderRadius: 10, fontSize: 12.5,
                 border: '1px solid var(--border)', background: 'var(--surface-2)',
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', lineHeight: 1.6,
-                boxSizing: 'border-box', minHeight: 380,
+                boxSizing: 'border-box',
               }}
             />
           )}
