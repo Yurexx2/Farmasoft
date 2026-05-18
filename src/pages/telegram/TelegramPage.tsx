@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
-import { telegramApi, messagingApi, TgConversation, TgConversationDetail, TgMessage, TgBotSettings } from '../../api/client'
+import { telegramApi, messagingApi, TgConversation, TgConversationDetail, TgMessage, TgBotSettings, TgPeerState } from '../../api/client'
 import { useAppStore } from '../../store/useAppStore'
 import { T } from '../../i18n'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -10,6 +10,29 @@ function initialsOf(name?: string | null): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return '?'
   return parts.slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('')
+}
+
+// Telegram-style presence label for the thread header.
+function presenceLabel(
+  ps: TgPeerState | null, t: typeof T['ua']['tg'], locale: string,
+): { text: string; online: boolean } | null {
+  if (!ps || ps.presence === 'unknown') return null
+  switch (ps.presence) {
+    case 'online':       return { text: t.online, online: true }
+    case 'recently':     return { text: t.seenRecently, online: false }
+    case 'within_week':  return { text: t.seenWeek, online: false }
+    case 'within_month': return { text: t.seenMonth, online: false }
+    case 'offline': {
+      if (!ps.lastSeen) return null
+      const d = new Date(ps.lastSeen * 1000)
+      const sameDay = new Date().toDateString() === d.toDateString()
+      const when = sameDay
+        ? d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+        : d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })
+      return { text: `${t.seenPrefix} ${when}`, online: false }
+    }
+  }
+  return null
 }
 
 function timeAgo(iso?: string | null, locale = 'uk-UA'): string {
@@ -356,6 +379,7 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
   // (messages, phone) fills in on the first fetch.
   const [conv, setConv] = useState<TgConversationDetail | null>(initialConv as unknown as TgConversationDetail)
   const [messages, setMessages] = useState<TgMessage[]>([])
+  const [peerState, setPeerState] = useState<TgPeerState | null>(null)
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -377,6 +401,7 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
     if (r.data) {
       setConv(r.data.conversation)
       setMessages(r.data.messages)
+      setPeerState(r.data.peerState)
     }
   }, [convId])
 
@@ -409,6 +434,8 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
   if (!conv) return <div style={{ padding: 24, color: 'var(--text-3)' }}>{T['ua'].dashboard.loading}</div>
 
   const name = conv.candidate_full_name || conv.candidate_name || conv.peer_name || '—'
+  const presence = presenceLabel(peerState, t, locale)
+  const readMax = peerState?.readOutboxMaxId ?? 0
   const visible = messages.filter(m => m.status !== 'pending_review' && m.status !== 'discarded')
 
   // Runs an action and surfaces any API error to the user (the send/approve
@@ -454,9 +481,16 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
         <Avatar name={name} photo={conv.candidate_photo} size={36} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-            {conv.candidate_role || conv.job_title || ''}
-            {conv.candidate_phone ? ` · ${conv.candidate_phone}` : ''}
+          <div style={{ fontSize: 11, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            {presence && (
+              <span style={{ color: presence.online ? '#16A34A' : 'var(--text-3)', fontWeight: presence.online ? 600 : 400 }}>
+                {presence.text}
+              </span>
+            )}
+            {presence && (conv.candidate_role || conv.job_title) && <span>·</span>}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {conv.candidate_role || conv.job_title || ''}
+            </span>
           </div>
         </div>
         <button
@@ -473,7 +507,7 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px', background: 'var(--surface-2)' }}>
         {visible.map(m => (
           <Bubble
-            key={m.id} msg={m} locale={locale} t={t}
+            key={m.id} msg={m} locale={locale} t={t} readMax={readMax}
             onDelete={() => { if (confirm(t.deleteMsgConfirm)) act(() => telegramApi.deleteMessage(m.id)) }}
           />
         ))}
@@ -515,12 +549,15 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
   )
 }
 
-function Bubble({ msg, locale, t, onDelete }: {
-  msg: TgMessage; locale: string; t: typeof T['ua']['tg']; onDelete: () => void
+function Bubble({ msg, locale, t, readMax, onDelete }: {
+  msg: TgMessage; locale: string; t: typeof T['ua']['tg']; readMax: number; onDelete: () => void
 }) {
   const [hover, setHover] = useState(false)
   const incoming = msg.direction === 'in'
   const senderLabel = msg.sender === 'bot' ? t.senderBot : msg.sender === 'alena' ? t.senderAlena : t.senderCandidate
+  // Read ticks for our messages: ✓✓ once the candidate has read it, else ✓.
+  const sentTg = !incoming && msg.tg_message_id != null
+  const read = sentTg && (msg.tg_message_id as number) <= readMax
   // A media placeholder like "[стікер 👋]" — shown as a discreet label, no brackets.
   const mediaMatch = msg.text.trim().match(/^\[(.+)\]$/)
   const media = mediaMatch ? mediaMatch[1].charAt(0).toUpperCase() + mediaMatch[1].slice(1) : null
@@ -545,7 +582,14 @@ function Bubble({ msg, locale, t, onDelete }: {
         <div style={{
           fontSize: 10, color: 'var(--text-3)', marginBottom: 2,
           textAlign: incoming ? 'left' : 'right',
-        }}>{senderLabel} · {timeAgo(msg.created_at, locale)}</div>
+        }}>
+          {senderLabel} · {timeAgo(msg.created_at, locale)}
+          {sentTg && (
+            <span style={{ marginLeft: 4, color: read ? '#229ED9' : 'var(--text-3)', fontWeight: 700 }}>
+              {read ? '✓✓' : '✓'}
+            </span>
+          )}
+        </div>
         {media ? (
           /* media message (sticker, photo…) — rendered as a discreet label */
           <div style={{

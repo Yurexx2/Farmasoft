@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { getDb } from '../db'
-import { telegramIsConnected } from '../lib/messaging/telegram'
+import { telegramIsConnected, telegramGetPeerState } from '../lib/messaging/telegram'
 import {
   getBotSettings, saveBotSettings,
   generateDraft, approveDraft, discardDraft, sendBotMessage, deleteMessage,
@@ -96,7 +96,7 @@ router.get('/sync-dialogs/status', (_req: Request, res: Response) => {
 })
 
 // ─── GET /telegram/conversations/:id — full thread ───────────────────────────
-router.get('/conversations/:id', (req: Request, res: Response) => {
+router.get('/conversations/:id', async (req: Request, res: Response) => {
   try {
     const db = getDb()
     const id = parseInt(req.params.id)
@@ -118,7 +118,12 @@ router.get('/conversations/:id', (req: Request, res: Response) => {
       WHERE conversation_id = ? AND status != 'discarded'
       ORDER BY id ASC
     `).all(id)
-    res.json({ data: { conversation: conv, messages } })
+    // Online status + read state of the peer (best-effort).
+    const c = conv as { peer_id?: string; peer_access_hash?: string | null }
+    const peerState = (c.peer_id && telegramIsConnected())
+      ? await telegramGetPeerState(c.peer_id, c.peer_access_hash ?? null).catch(() => null)
+      : null
+    res.json({ data: { conversation: conv, messages, peerState } })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })
   }

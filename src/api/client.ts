@@ -211,7 +211,7 @@ export const telegramApi = {
     req<TgBotSettings>('/telegram/settings', { method: 'POST', ...body(s) }),
   conversations: () => req<TgConversation[]>('/telegram/conversations'),
   conversation: (id: number) =>
-    req<{ conversation: TgConversationDetail; messages: TgMessage[] }>(`/telegram/conversations/${id}`),
+    req<{ conversation: TgConversationDetail; messages: TgMessage[]; peerState: TgPeerState | null }>(`/telegram/conversations/${id}`),
   send: (id: number, text: string) =>
     req<{ ok: boolean }>(`/telegram/conversations/${id}/send`, { method: 'POST', ...body({ text }) }),
   regenerate: (id: number) =>
@@ -270,6 +270,12 @@ export interface TgConversationDetail extends TgConversation {
   peer_phone: string | null
   candidate_phone: string | null
   last_seen_message_id: number
+}
+
+export interface TgPeerState {
+  presence: 'online' | 'recently' | 'within_week' | 'within_month' | 'offline' | 'unknown'
+  lastSeen?: number
+  readOutboxMaxId: number
 }
 
 export interface TgMessage {

@@ -374,6 +374,46 @@ export async function telegramSetTyping(peerId: string, accessHash?: string | nu
   } catch { /* non-critical */ }
 }
 
+// ─── Peer presence + read state ──────────────────────────────────────────────
+export interface PeerState {
+  presence: 'online' | 'recently' | 'within_week' | 'within_month' | 'offline' | 'unknown'
+  lastSeen?: number          // unix seconds — set when presence is 'offline'
+  readOutboxMaxId: number    // highest id of OUR messages the peer has read
+}
+
+/**
+ * One call that returns both the peer's online status and how far they have
+ * read our messages — used to show presence and ✓/✓✓ read ticks.
+ */
+export async function telegramGetPeerState(
+  peerId: string, accessHash: string | null,
+): Promise<PeerState | null> {
+  if (!activeClient) return null
+  try {
+    const peer = await resolvePeer(peerId, accessHash)
+    const res = await activeClient.invoke(new Api.messages.GetPeerDialogs({
+      peers: [new Api.InputDialogPeer({ peer: peer as never })],
+    })) as {
+      dialogs?: Array<{ readOutboxMaxId?: number }>
+      users?: Array<{ status?: { className?: string; wasOnline?: number } }>
+    }
+    const st = res.users?.[0]?.status
+    let presence: PeerState['presence'] = 'unknown'
+    let lastSeen: number | undefined
+    switch (st?.className) {
+      case 'UserStatusOnline':     presence = 'online'; break
+      case 'UserStatusRecently':   presence = 'recently'; break
+      case 'UserStatusLastWeek':   presence = 'within_week'; break
+      case 'UserStatusLastMonth':  presence = 'within_month'; break
+      case 'UserStatusOffline':    presence = 'offline'; lastSeen = st.wasOnline; break
+    }
+    return { presence, lastSeen, readOutboxMaxId: res.dialogs?.[0]?.readOutboxMaxId ?? 0 }
+  } catch (e) {
+    console.error('[telegram peerState]', (e as Error).message)
+    return null
+  }
+}
+
 /** Delete a message on Telegram for everyone (revoke), like the Telegram app. */
 export async function telegramDeleteMessage(
   peerId: string, accessHash: string | null, tgMessageId: number,
