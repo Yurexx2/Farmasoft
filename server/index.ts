@@ -25,7 +25,7 @@ import telegramBotRouter from './routes/telegram'
 // import workuaRouter from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
 import { telegramIsConnected, onTelegramInbound } from './lib/messaging/telegram'
-import { handleInbound, recoverMissed } from './lib/telegram-bot/bot'
+import { handleInbound, recoverMissed, importAllDialogs } from './lib/telegram-bot/bot'
 import { apiAuth } from './middleware/auth'
 
 const app = express()
@@ -133,9 +133,11 @@ app.listen(PORT, () => {
   onTelegramInbound(handleInbound)
 
   // Reload Telegram session if previously authenticated, then recover any
-  // candidate replies that arrived while the server was offline.
+  // candidate replies that arrived while the server was offline and import
+  // every existing Telegram conversation.
   reloadTelegramSession()
     .then(() => recoverMissed())
+    .then(() => importAllDialogs())
     .catch(e => console.error('[startup telegram]', (e as Error).message))
 })
 
@@ -192,4 +194,16 @@ function startCron() {
       console.error('[cron] Telegram recover error:', (e as Error).message)
     }
   }, 5 * 60 * 1000)
+
+  // Auto-import Telegram conversations every 15 min — picks up new threads
+  // without any manual action.
+  setInterval(async () => {
+    try {
+      if (telegramIsConnected()) {
+        await importAllDialogs().catch(e => console.error('[cron tg-import]', (e as Error).message))
+      }
+    } catch (e) {
+      console.error('[cron] Telegram import error:', (e as Error).message)
+    }
+  }, 15 * 60 * 1000)
 }

@@ -83,7 +83,7 @@ export function TelegramPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <Header settings={settings} onChange={loadSettings} onSynced={loadConversations} t={t} draftsTotal={draftsTotal} />
+      <Header settings={settings} onChange={loadSettings} t={t} draftsTotal={draftsTotal} />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: 0 }}>
         {/* Conversation list */}
@@ -140,33 +140,17 @@ export function TelegramPage() {
 }
 
 // ─── header — title + global bot settings ──────────────────────────────────
-function Header({ settings, onChange, onSynced, t, draftsTotal }: {
+function Header({ settings, onChange, t, draftsTotal }: {
   settings: TgBotSettings
   onChange: () => void
-  onSynced: () => void
   t: typeof T['ua']['tg']
   draftsTotal: number
 }) {
   const [showKnowledge, setShowKnowledge] = useState(false)
-  const [syncing, setSyncing] = useState(false)
 
   async function save(patch: Partial<Pick<TgBotSettings, 'mode'>>) {
     await telegramApi.saveSettings(patch)
     onChange()
-  }
-
-  async function syncDialogs() {
-    if (syncing) return
-    setSyncing(true)
-    await telegramApi.syncDialogs()
-    const poll = setInterval(async () => {
-      const r = await telegramApi.syncStatus()
-      onSynced()  // refresh the list as threads land
-      if (r.data && (r.data.status === 'done' || r.data.status === 'error')) {
-        clearInterval(poll)
-        setSyncing(false)
-      }
-    }, 2000)
   }
 
   return (
@@ -182,9 +166,6 @@ function Header({ settings, onChange, onSynced, t, draftsTotal }: {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost btn-sm" disabled={syncing} onClick={syncDialogs}>
-            {syncing ? `⏳ ${t.syncing}` : `🔄 ${t.sync}`}
-          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
             📖 {t.knowledge}
           </button>
