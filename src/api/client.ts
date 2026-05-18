@@ -220,6 +220,8 @@ export const telegramApi = {
     req<{ ok: boolean }>(`/telegram/conversations/${id}`, { method: 'DELETE' }),
   discardDraft: (msgId: number) =>
     req<{ ok: boolean }>(`/telegram/messages/${msgId}/discard`, { method: 'POST' }),
+  deleteMessage: (msgId: number) =>
+    req<{ ok: boolean }>(`/telegram/messages/${msgId}`, { method: 'DELETE' }),
   knowledge: () => req<{ text: string }>('/telegram/knowledge'),
   saveKnowledge: (text: string) =>
     req<{ text: string }>('/telegram/knowledge', { method: 'POST', ...body({ text }) }),

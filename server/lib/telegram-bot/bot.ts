@@ -4,7 +4,8 @@ import { getDb } from '../../db'
 import { callClaude, ChatTurn } from './claude'
 import {
   telegramSendToPeer, telegramSetTyping, telegramMarkRead,
-  telegramFetchSince, telegramFetchDialogs, telegramIsConnected, InboundTelegram,
+  telegramFetchSince, telegramFetchDialogs, telegramDeleteMessage,
+  telegramIsConnected, InboundTelegram,
 } from '../messaging/telegram'
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -255,6 +256,28 @@ export async function approveDraft(messageId: number, overrideText?: string): Pr
 /** Discard a pending draft without sending. */
 export function discardDraft(messageId: number): void {
   getDb().prepare("UPDATE tg_messages SET status = 'discarded' WHERE id = ? AND status = 'pending_review'").run(messageId)
+}
+
+/**
+ * Delete a single message — on Telegram (for everyone) and from the thread.
+ * The Telegram delete is best-effort; the local row is always removed so the
+ * message disappears from the tab even if Telegram refuses (e.g. too old).
+ */
+export async function deleteMessage(messageId: number): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb()
+  const msg = db.prepare(`
+    SELECT m.tg_message_id, c.peer_id, c.peer_access_hash
+    FROM tg_messages m JOIN tg_conversations c ON c.id = m.conversation_id
+    WHERE m.id = ?
+  `).get(messageId) as { tg_message_id: number | null; peer_id: string | null; peer_access_hash: string | null } | undefined
+  if (!msg) return { ok: false, error: 'Message introuvable' }
+
+  if (msg.tg_message_id && msg.peer_id && telegramIsConnected()) {
+    await telegramDeleteMessage(msg.peer_id, msg.peer_access_hash, msg.tg_message_id)
+      .catch(e => console.error('[tg-bot deleteMessage]', (e as Error).message))
+  }
+  db.prepare('DELETE FROM tg_messages WHERE id = ?').run(messageId)
+  return { ok: true }
 }
 
 /**

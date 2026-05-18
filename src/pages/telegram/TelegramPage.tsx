@@ -490,7 +490,12 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
 
       {/* messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px', background: 'var(--surface-2)' }}>
-        {visible.map(m => <Bubble key={m.id} msg={m} locale={locale} t={t} />)}
+        {visible.map(m => (
+          <Bubble
+            key={m.id} msg={m} locale={locale} t={t}
+            onDelete={() => { if (confirm(t.deleteMsgConfirm)) act(() => telegramApi.deleteMessage(m.id)) }}
+          />
+        ))}
       </div>
 
       {/* composer */}
@@ -529,11 +534,29 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
   )
 }
 
-function Bubble({ msg, locale, t }: { msg: TgMessage; locale: string; t: typeof T['ua']['tg'] }) {
+function Bubble({ msg, locale, t, onDelete }: {
+  msg: TgMessage; locale: string; t: typeof T['ua']['tg']; onDelete: () => void
+}) {
+  const [hover, setHover] = useState(false)
   const incoming = msg.direction === 'in'
   const senderLabel = msg.sender === 'bot' ? t.senderBot : msg.sender === 'alena' ? t.senderAlena : t.senderCandidate
+  const delBtn = (
+    <button
+      onClick={onDelete} title={t.delete}
+      style={{
+        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)',
+        fontSize: 13, padding: 4, flexShrink: 0, lineHeight: 1,
+        opacity: hover ? 0.85 : 0, transition: 'opacity 120ms',
+      }}
+    >🗑</button>
+  )
   return (
-    <div style={{ display: 'flex', justifyContent: incoming ? 'flex-start' : 'flex-end', marginBottom: 8 }}>
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8,
+               justifyContent: incoming ? 'flex-start' : 'flex-end' }}
+    >
+      {!incoming && delBtn}
       <div style={{ maxWidth: '74%' }}>
         <div style={{
           fontSize: 10, color: 'var(--text-3)', marginBottom: 2,
@@ -548,6 +571,7 @@ function Bubble({ msg, locale, t }: { msg: TgMessage; locale: string; t: typeof 
           borderBottomRightRadius: incoming ? 12 : 3,
         }}>{msg.text}</div>
       </div>
+      {incoming && delBtn}
     </div>
   )
 }

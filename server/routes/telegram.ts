@@ -3,7 +3,7 @@ import { getDb } from '../db'
 import { telegramIsConnected } from '../lib/messaging/telegram'
 import {
   getBotSettings, saveBotSettings,
-  generateDraft, approveDraft, discardDraft, sendBotMessage,
+  generateDraft, approveDraft, discardDraft, sendBotMessage, deleteMessage,
   getKnowledgeText, saveKnowledgeText,
   importAllDialogs, getDialogSyncProgress,
 } from '../lib/telegram-bot/bot'
@@ -177,6 +177,16 @@ router.post('/messages/:id/discard', (req: Request, res: Response) => {
   try {
     discardDraft(parseInt(req.params.id))
     res.json({ data: { ok: true } })
+  } catch (e: unknown) {
+    res.json({ error: (e as Error).message })
+  }
+})
+
+// ─── DELETE /telegram/messages/:id — delete a message (on Telegram + locally)
+router.delete('/messages/:id', async (req: Request, res: Response) => {
+  try {
+    const r = await deleteMessage(parseInt(req.params.id))
+    res.json(r.ok ? { data: { ok: true } } : { error: r.error })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })
   }

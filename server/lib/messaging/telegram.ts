@@ -319,6 +319,20 @@ export async function telegramSetTyping(peerId: string, accessHash?: string | nu
   } catch { /* non-critical */ }
 }
 
+/** Delete a message on Telegram for everyone (revoke), like the Telegram app. */
+export async function telegramDeleteMessage(
+  peerId: string, accessHash: string | null, tgMessageId: number,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!activeClient) return { ok: false, error: 'Compte Telegram non connecté' }
+  try {
+    const peer = await resolvePeer(peerId, accessHash)
+    await activeClient.deleteMessages(peer as never, [tgMessageId], { revoke: true })
+    return { ok: true }
+  } catch (err: unknown) {
+    return { ok: false, error: (err as Error).message }
+  }
+}
+
 /** Mark the conversation as read up to the latest message. */
 export async function telegramMarkRead(peerId: string, accessHash?: string | null): Promise<void> {
   if (!activeClient) return
