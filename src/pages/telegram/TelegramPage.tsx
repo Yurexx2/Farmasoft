@@ -120,7 +120,8 @@ export function TelegramPage() {
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {selected ? (
               <Thread
-                key={selected.id} convId={selected.id} t={t} locale={locale} isMobile={isMobile}
+                key={selected.id} convId={selected.id} initialConv={selected}
+                t={t} locale={locale} isMobile={isMobile}
                 onBack={() => setSelectedId(null)}
                 onChanged={loadConversations}
                 onDeleted={() => { setSelectedId(null); loadConversations() }}
@@ -360,8 +361,9 @@ function Avatar({ name, photo, size }: { name: string; photo?: string | null; si
 }
 
 // ─── thread view ────────────────────────────────────────────────────────────
-function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
+function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   convId: number
+  initialConv: TgConversation
   t: typeof T['ua']['tg']
   locale: string
   isMobile: boolean
@@ -369,7 +371,9 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   onChanged: () => void
   onDeleted: () => void
 }) {
-  const [conv, setConv] = useState<TgConversationDetail | null>(null)
+  // Seed from the list row so the header renders instantly; the full detail
+  // (messages, phone) fills in on the first fetch.
+  const [conv, setConv] = useState<TgConversationDetail | null>(initialConv as unknown as TgConversationDetail)
   const [messages, setMessages] = useState<TgMessage[]>([])
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
