@@ -17,13 +17,13 @@ function setSetting(key: string, value: string): void {
 }
 
 export interface BotSettings {
-  enabled: boolean        // global kill-switch
-  mode: 'review' | 'auto' // review = Alena approves each draft
+  // review = the bot drafts a reply for Alena to edit/send;
+  // auto    = the bot sends on its own. The bot is always active.
+  mode: 'review' | 'auto'
   calendlyUrl: string
 }
 export function getBotSettings(): BotSettings {
   return {
-    enabled:     (getSetting('tg_bot_enabled') ?? '1') === '1',
     mode:        (getSetting('tg_bot_mode') as 'review' | 'auto') ?? 'review',
     // Reuse the Calendly link already configured for the rest of Farmasoft —
     // no separate setup needed for the bot.
@@ -31,8 +31,7 @@ export function getBotSettings(): BotSettings {
   }
 }
 export function saveBotSettings(s: Partial<BotSettings>): void {
-  if (s.enabled !== undefined)  setSetting('tg_bot_enabled', s.enabled ? '1' : '0')
-  if (s.mode)                   setSetting('tg_bot_mode', s.mode)
+  if (s.mode)                      setSetting('tg_bot_mode', s.mode)
   if (s.calendlyUrl !== undefined) setSetting('calendly_url', s.calendlyUrl)
 }
 
@@ -150,19 +149,10 @@ export function handleInbound(msg: InboundTelegram): void {
 
     db.prepare('UPDATE tg_conversations SET last_seen_message_id = MAX(last_seen_message_id, ?), unread = 1 WHERE id = ?')
       .run(msg.messageId, conv.id)
-    if (conv.status === 'awaiting_reply') {
-      db.prepare("UPDATE tg_conversations SET status = 'bot_active' WHERE id = ?").run(conv.id)
-    }
     logEvent('tg_inbound', conv.candidate_id, { conversationId: conv.id })
 
-    // Bot replies only if globally enabled and the conversation has not been
-    // taken over by Alena / booked / closed. There is no per-thread switch —
-    // Alena controls a single conversation with "Take over".
-    const settings = getBotSettings()
-    const handled = ['human', 'booked', 'closed'].includes(conv.status)
-    if (!settings.enabled || handled) return
-
-    // Debounce: a candidate often sends several messages in a row.
+    // The bot is always active on every conversation. Debounce: a candidate
+    // often sends several messages in a row.
     const prev = debounceTimers.get(conv.id)
     if (prev) clearTimeout(prev)
     debounceTimers.set(conv.id, setTimeout(() => {
@@ -185,10 +175,8 @@ export async function generateDraft(convId: number): Promise<void> {
   const db = getDb()
   const conv = db.prepare('SELECT * FROM tg_conversations WHERE id = ?').get(convId) as ConvRow | undefined
   if (!conv) return
-  if (['human', 'booked', 'closed'].includes(conv.status)) return
 
   const settings = getBotSettings()
-  if (!settings.enabled) return
 
   // Drop any earlier un-reviewed draft — the candidate has spoken since.
   db.prepare("UPDATE tg_messages SET status = 'discarded' WHERE conversation_id = ? AND status = 'pending_review'").run(convId)
@@ -340,17 +328,14 @@ export async function recoverMissed(): Promise<void> {
  * is ever left silently unanswered.
  */
 export async function processPendingConversations(convId?: number): Promise<void> {
-  const settings = getBotSettings()
-  if (!settings.enabled) return
   const db = getDb()
   const convs = (convId
     ? db.prepare('SELECT * FROM tg_conversations WHERE id = ?').all(convId)
-    : db.prepare("SELECT * FROM tg_conversations WHERE status IN ('awaiting_reply','bot_active')").all()
+    : db.prepare('SELECT * FROM tg_conversations').all()
   ) as unknown as ConvRow[]
 
   for (const conv of convs) {
     try {
-      if (['human', 'booked', 'closed'].includes(conv.status)) continue
       const last = db.prepare(`
         SELECT direction FROM tg_messages WHERE conversation_id = ? AND status = 'sent'
         ORDER BY id DESC LIMIT 1

@@ -4,7 +4,7 @@ import { telegramIsConnected } from '../lib/messaging/telegram'
 import {
   getBotSettings, saveBotSettings,
   generateDraft, approveDraft, discardDraft, sendBotMessage,
-  processPendingConversations, getKnowledgeText, saveKnowledgeText,
+  getKnowledgeText, saveKnowledgeText,
   importAllDialogs, getDialogSyncProgress,
 } from '../lib/telegram-bot/bot'
 
@@ -21,13 +21,8 @@ router.get('/settings', (_req: Request, res: Response) => {
 
 router.post('/settings', (req: Request, res: Response) => {
   try {
-    const { enabled, mode, calendlyUrl } = req.body as { enabled?: boolean; mode?: 'review' | 'auto'; calendlyUrl?: string }
-    const wasEnabled = getBotSettings().enabled
-    saveBotSettings({ enabled, mode, calendlyUrl })
-    // Re-enabling the bot must catch up on every unanswered candidate message.
-    if (enabled === true && !wasEnabled) {
-      processPendingConversations().catch(e => console.error('[tg pending]', (e as Error).message))
-    }
+    const { mode, calendlyUrl } = req.body as { mode?: 'review' | 'auto'; calendlyUrl?: string }
+    saveBotSettings({ mode, calendlyUrl })
     res.json({ data: getBotSettings() })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })
@@ -137,26 +132,6 @@ router.post('/conversations/:id/send', async (req: Request, res: Response) => {
     if (!text?.trim()) return res.json({ error: 'Message vide' })
     const r = await sendBotMessage(id, text.trim(), 'alena')
     res.json(r.ok ? { data: { ok: true } } : { error: r.error })
-  } catch (e: unknown) {
-    res.json({ error: (e as Error).message })
-  }
-})
-
-// ─── POST /telegram/conversations/:id/status — take over / give to bot / close
-router.post('/conversations/:id/status', (req: Request, res: Response) => {
-  try {
-    const db = getDb()
-    const id = parseInt(req.params.id)
-    const { status } = req.body as { status: string }
-    const allowed = ['awaiting_reply', 'bot_active', 'human', 'booked', 'closed']
-    if (!allowed.includes(status)) return res.json({ error: 'Statut invalide' })
-    db.prepare('UPDATE tg_conversations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, id)
-    // Handing a conversation (back) to the bot should answer any message the
-    // candidate left while Alena was managing it.
-    if (status === 'bot_active') {
-      processPendingConversations(id).catch(e => console.error('[tg pending]', (e as Error).message))
-    }
-    res.json({ data: { ok: true } })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })
   }

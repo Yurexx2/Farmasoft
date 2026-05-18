@@ -24,14 +24,6 @@ function timeAgo(iso?: string | null, locale = 'uk-UA'): string {
   return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  awaiting_reply: '#94A3B8',
-  bot_active: '#229ED9',
-  human: '#F59E0B',
-  booked: '#16A34A',
-  closed: '#CBD5E1',
-}
-
 // ─── main page ───────────────────────────────────────────────────────────────
 export function TelegramPage() {
   const { uiLang } = useAppStore()
@@ -157,7 +149,7 @@ function Header({ settings, onChange, onSynced, t, draftsTotal }: {
   const [showKnowledge, setShowKnowledge] = useState(false)
   const [syncing, setSyncing] = useState(false)
 
-  async function save(patch: Partial<Pick<TgBotSettings, 'enabled' | 'mode'>>) {
+  async function save(patch: Partial<Pick<TgBotSettings, 'mode'>>) {
     await telegramApi.saveSettings(patch)
     onChange()
   }
@@ -195,22 +187,8 @@ function Header({ settings, onChange, onSynced, t, draftsTotal }: {
           <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
             📖 {t.knowledge}
           </button>
-          {/* Global on/off */}
-          <button
-            onClick={() => save({ enabled: !settings.enabled })}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 7, padding: '7px 12px', borderRadius: 9,
-              border: `1px solid ${settings.enabled ? '#BBF7D0' : 'var(--border)'}`,
-              background: settings.enabled ? '#F0FDF4' : 'var(--surface-2)',
-              color: settings.enabled ? '#16A34A' : 'var(--text-3)',
-              fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: settings.enabled ? '#16A34A' : 'var(--text-3)' }} />
-            {t.botGlobal}: {settings.enabled ? t.botOn : t.botOff}
-          </button>
 
-          {/* Mode pills */}
+          {/* Mode pills — the only bot control. The bot is always active. */}
           <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
             {(['review', 'auto'] as const).map(m => (
               <button
@@ -397,6 +375,7 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const loadedDraftRef = useRef<number | null>(null)
 
   const load = useCallback(async () => {
     const r = await telegramApi.conversation(convId)
@@ -417,10 +396,20 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
 
+  // In review mode the bot's suggested reply is loaded straight into the
+  // composer for Alena to edit or send. Each draft is loaded only once, so
+  // clearing the box keeps it cleared.
+  const draft = messages.find(m => m.status === 'pending_review')
+  useEffect(() => {
+    if (draft && loadedDraftRef.current !== draft.id) {
+      loadedDraftRef.current = draft.id
+      setReply(draft.text)
+    }
+  }, [draft])
+
   if (!conv) return <div style={{ padding: 24, color: 'var(--text-3)' }}>{T['ua'].dashboard.loading}</div>
 
   const name = conv.candidate_full_name || conv.candidate_name || conv.peer_name || '—'
-  const draft = messages.find(m => m.status === 'pending_review')
   const visible = messages.filter(m => m.status !== 'pending_review' && m.status !== 'discarded')
 
   // Runs an action and surfaces any API error to the user (the send/approve
@@ -438,13 +427,17 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   }
 
   // Send the typed message; keep the text in the box if the send failed so
-  // nothing is lost.
+  // nothing is lost. A pending bot suggestion is consumed once sent.
   async function doSend() {
     const text = reply.trim()
     if (!text) return
+    const pending = messages.find(m => m.status === 'pending_review')
     await act(async () => {
       const r = await telegramApi.send(convId, text)
-      if (!r.error) setReply('')
+      if (!r.error) {
+        setReply('')
+        if (pending) await telegramApi.discardDraft(pending.id)
+      }
       return r
     })
   }
@@ -467,35 +460,14 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
             {conv.candidate_phone ? ` · ${conv.candidate_phone}` : ''}
           </div>
         </div>
-        <StatusBadge status={conv.status} t={t} />
-      </div>
-
-      {/* action bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
-        borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap',
-        justifyContent: 'flex-end',
-      }}>
-        {/* Per-conversation control = who handles it. The bot mode (review /
-            automatic) is global, set from the header. */}
-        {(conv.status === 'bot_active' || conv.status === 'awaiting_reply') && (
-          <button className="btn btn-ghost btn-sm" disabled={busy}
-            onClick={() => act(() => telegramApi.setStatus(convId, 'human'))}>{t.markHuman}</button>
-        )}
-        {conv.status === 'human' && (
-          <button className="btn btn-ghost btn-sm" disabled={busy}
-            onClick={() => act(() => telegramApi.setStatus(convId, 'bot_active'))}>{t.giveToBot}</button>
-        )}
-        {conv.status !== 'closed' ? (
-          <button className="btn btn-ghost btn-sm" disabled={busy}
-            onClick={() => act(() => telegramApi.setStatus(convId, 'closed'))}>{t.markClosed}</button>
-        ) : (
-          <button className="btn btn-ghost btn-sm" disabled={busy}
-            onClick={() => act(() => telegramApi.setStatus(convId, 'bot_active'))}>{t.reopen}</button>
-        )}
-        <button className="btn btn-ghost btn-sm" disabled={busy}
+        <button
+          title={t.delete} disabled={busy}
           onClick={() => { if (confirm(t.deleteConfirm)) act(async () => { await telegramApi.remove(convId); onDeleted() }) }}
-          style={{ color: '#DC2626' }}>{t.delete}</button>
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)',
+            fontSize: 16, padding: 4, lineHeight: 1, flexShrink: 0,
+          }}
+        >🗑</button>
       </div>
 
       {/* messages */}
@@ -503,22 +475,18 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
         {visible.map(m => <Bubble key={m.id} msg={m} locale={locale} t={t} />)}
       </div>
 
-      {/* pending draft */}
-      {draft && (
-        <DraftCard
-          draft={draft} t={t} busy={busy}
-          onApprove={text => act(() => telegramApi.approveDraft(draft.id, text))}
-          onDiscard={() => act(() => telegramApi.discardDraft(draft.id))}
-          onRegenerate={() => act(() => telegramApi.regenerate(convId))}
-        />
-      )}
-
       {/* composer */}
       {err && (
         <div style={{
           padding: '8px 16px', background: '#FEF2F2', color: '#DC2626', fontSize: 12,
           borderTop: '1px solid #FCA5A5', flexShrink: 0,
         }}>⚠ {err}</div>
+      )}
+      {draft && (
+        <div style={{
+          padding: '6px 16px', background: '#F0F9FF', color: '#1B7FAE', fontSize: 11.5,
+          borderTop: '1px solid #BAE6FD', flexShrink: 0,
+        }}>🤖 {t.botSuggestion}</div>
       )}
       <div style={{ display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <textarea
@@ -539,25 +507,15 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
           }}
         />
         <button
+          className="btn btn-ghost btn-sm" disabled={busy} title={t.regenerateTitle}
+          onClick={() => act(() => telegramApi.regenerate(convId))}
+        >🤖</button>
+        <button
           className="btn btn-primary btn-sm" disabled={busy || !reply.trim()}
           onClick={doSend}
         >{t.send}</button>
       </div>
     </div>
-  )
-}
-
-function StatusBadge({ status, t }: { status: string; t: typeof T['ua']['tg'] }) {
-  const label: Record<string, string> = {
-    awaiting_reply: t.statusAwaiting, bot_active: t.statusBot,
-    human: t.statusHuman, booked: t.statusBooked, closed: t.statusClosed,
-  }
-  const color = STATUS_COLOR[status] || '#94A3B8'
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '4px 9px', borderRadius: 8,
-      background: `${color}1F`, color, whiteSpace: 'nowrap', flexShrink: 0,
-    }}>{label[status] || status}</span>
   )
 }
 
@@ -584,43 +542,3 @@ function Bubble({ msg, locale, t }: { msg: TgMessage; locale: string; t: typeof 
   )
 }
 
-function DraftCard({ draft, t, busy, onApprove, onDiscard, onRegenerate }: {
-  draft: TgMessage
-  t: typeof T['ua']['tg']
-  busy: boolean
-  onApprove: (text: string) => void
-  onDiscard: () => void
-  onRegenerate: () => void
-}) {
-  const [text, setText] = useState(draft.text)
-  useEffect(() => { setText(draft.text) }, [draft.id, draft.text])
-
-  return (
-    <div style={{
-      padding: '12px 16px', borderTop: '2px solid #229ED9', background: '#F0F9FF', flexShrink: 0,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#1B7FAE', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          🤖 {t.draftPending}
-        </span>
-      </div>
-      <textarea
-        value={text}
-        onChange={e => setText(e.target.value)}
-        rows={3}
-        style={{
-          width: '100%', resize: 'vertical', padding: '9px 12px', borderRadius: 9, fontSize: 13,
-          border: '1px solid #BAE6FD', background: '#fff', fontFamily: 'inherit',
-          boxSizing: 'border-box', lineHeight: 1.45,
-        }}
-      />
-      <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
-        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onRegenerate}>{t.regenerate}</button>
-        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onDiscard}>{t.discard}</button>
-        <button className="btn btn-primary btn-sm" disabled={busy || !text.trim()} onClick={() => onApprove(text.trim())}>
-          {t.approve}
-        </button>
-      </div>
-    </div>
-  )
-}

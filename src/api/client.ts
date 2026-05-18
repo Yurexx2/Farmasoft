@@ -207,21 +207,17 @@ export const messagingApi = {
 // ─── Telegram recruiting bot ─────────────────────────────────────────────
 export const telegramApi = {
   settings: () => req<TgBotSettings>('/telegram/settings'),
-  saveSettings: (s: Partial<Pick<TgBotSettings, 'enabled' | 'mode' | 'calendlyUrl'>>) =>
+  saveSettings: (s: Partial<Pick<TgBotSettings, 'mode' | 'calendlyUrl'>>) =>
     req<TgBotSettings>('/telegram/settings', { method: 'POST', ...body(s) }),
   conversations: () => req<TgConversation[]>('/telegram/conversations'),
   conversation: (id: number) =>
     req<{ conversation: TgConversationDetail; messages: TgMessage[] }>(`/telegram/conversations/${id}`),
   send: (id: number, text: string) =>
     req<{ ok: boolean }>(`/telegram/conversations/${id}/send`, { method: 'POST', ...body({ text }) }),
-  setStatus: (id: number, status: string) =>
-    req<{ ok: boolean }>(`/telegram/conversations/${id}/status`, { method: 'POST', ...body({ status }) }),
   regenerate: (id: number) =>
     req<{ ok: boolean }>(`/telegram/conversations/${id}/draft`, { method: 'POST' }),
   remove: (id: number) =>
     req<{ ok: boolean }>(`/telegram/conversations/${id}`, { method: 'DELETE' }),
-  approveDraft: (msgId: number, text?: string) =>
-    req<{ ok: boolean }>(`/telegram/messages/${msgId}/approve`, { method: 'POST', ...body({ text }) }),
   discardDraft: (msgId: number) =>
     req<{ ok: boolean }>(`/telegram/messages/${msgId}/discard`, { method: 'POST' }),
   knowledge: () => req<{ text: string }>('/telegram/knowledge'),
@@ -240,7 +236,6 @@ export interface DialogSyncProgress {
 }
 
 export interface TgBotSettings {
-  enabled: boolean
   mode: 'review' | 'auto'
   calendlyUrl: string
   connected?: boolean
