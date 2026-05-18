@@ -18,7 +18,15 @@ async function req<T>(url: string, options?: RequestInit): Promise<{ data?: T; e
       cache: 'no-store',
       ...options,
     })
-    const json = await res.json()
+    // Read as text first — during a redeploy the server can return an HTML
+    // page, which would otherwise throw a cryptic "Unexpected token '<'".
+    const text = await res.text()
+    let json: { data?: T; error?: string }
+    try {
+      json = text ? JSON.parse(text) : {}
+    } catch {
+      return { error: res.ok ? 'Réponse inattendue du serveur, réessayez' : `Serveur indisponible (HTTP ${res.status})` }
+    }
     if (!res.ok) return { error: json.error || `HTTP ${res.status}` }
     return json
   } catch (err) {
@@ -46,7 +54,13 @@ async function reqPublish(
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (API_KEY) headers['x-api-key'] = API_KEY
     const res = await fetch(`${BASE}${url}`, { headers, cache: 'no-store', ...options })
-    const json = await res.json()
+    const text = await res.text()
+    let json: { data?: { success: boolean; robota_vacancy_id: number }; error?: string; publication_failure?: PublicationFailure }
+    try {
+      json = text ? JSON.parse(text) : {}
+    } catch {
+      return { error: res.ok ? 'Réponse inattendue du serveur, réessayez' : `Serveur indisponible (HTTP ${res.status})` }
+    }
     if (!res.ok) return { error: json.error || `HTTP ${res.status}`, publication_failure: json.publication_failure }
     return json
   } catch (err) {
