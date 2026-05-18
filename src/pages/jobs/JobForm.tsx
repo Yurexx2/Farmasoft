@@ -7,6 +7,7 @@ import {
   EMPLOYMENT_TYPES, WORK_TYPES_OPTS, PUBLISH_TYPES, LANGUAGES, LANGUAGE_LEVELS,
 } from './constants'
 import { iconClose, iconSparkle } from './icons'
+import { stripHtmlToText } from './helpers'
 
 export { EMPTY_JOB }
 
@@ -34,7 +35,13 @@ export function JobForm({ initial, onSave, onClose }: {
 }) {
   const { uiLang } = useAppStore()
   const tf = T[uiLang].jobs.form
-  const [form, setForm] = useState<Partial<Job>>(initial)
+  // Robota.ua imports the description/requirements as HTML — strip it to
+  // plain text so the form shows readable text, not markup.
+  const [form, setForm] = useState<Partial<Job>>(() => ({
+    ...initial,
+    description: stripHtmlToText(initial.description),
+    requirements: stripHtmlToText(initial.requirements),
+  }))
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
