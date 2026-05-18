@@ -25,7 +25,7 @@ import telegramBotRouter from './routes/telegram'
 // import workuaRouter from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
 import { telegramIsConnected, onTelegramInbound, onTelegramDeleted } from './lib/messaging/telegram'
-import { handleInbound, handleDeleted, recoverMissed, importAllDialogs } from './lib/telegram-bot/bot'
+import { handleInbound, handleDeleted, recoverMissed, importAllDialogs, reconcileDeletions } from './lib/telegram-bot/bot'
 import { apiAuth } from './middleware/auth'
 
 const app = express()
@@ -139,6 +139,7 @@ app.listen(PORT, () => {
   // every existing Telegram conversation.
   reloadTelegramSession()
     .then(() => recoverMissed())
+    .then(() => reconcileDeletions())
     .then(() => importAllDialogs())
     .catch(e => console.error('[startup telegram]', (e as Error).message))
 })
@@ -191,6 +192,7 @@ function startCron() {
     try {
       if (telegramIsConnected()) {
         await recoverMissed().catch(e => console.error('[cron tg-recover]', (e as Error).message))
+        await reconcileDeletions().catch(e => console.error('[cron tg-reconcile]', (e as Error).message))
       }
     } catch (e) {
       console.error('[cron] Telegram recover error:', (e as Error).message)

@@ -5,7 +5,7 @@ import { callClaude, ChatTurn } from './claude'
 import {
   telegramSendToPeer, telegramSetTyping, telegramMarkRead,
   telegramFetchSince, telegramFetchDialogs, telegramDeleteMessage,
-  telegramIsConnected, InboundTelegram,
+  telegramFetchMessageIds, telegramIsConnected, InboundTelegram,
 } from '../messaging/telegram'
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -316,6 +316,49 @@ export function handleDeleted(messageIds: number[]): void {
 }
 
 /**
+ * Sweep every local conversation and drop messages no longer on Telegram —
+ * the safety net for deletions the live event missed (server offline, etc.).
+ * Iterates local threads directly, so it works even for a chat that was
+ * fully cleared and no longer appears in the dialog list.
+ */
+export async function reconcileDeletions(): Promise<void> {
+  if (!telegramIsConnected()) return
+  const db = getDb()
+  const convs = db.prepare(
+    'SELECT id, peer_id, peer_access_hash FROM tg_conversations WHERE peer_id IS NOT NULL',
+  ).all() as { id: number; peer_id: string; peer_access_hash: string | null }[]
+
+  for (const conv of convs) {
+    try {
+      const r = await telegramFetchMessageIds(conv.peer_id, conv.peer_access_hash, 60)
+      if (!r) continue
+      let removed = 0
+      if (r.ids.length === 0) {
+        // The chat is empty on Telegram — every message was deleted.
+        if (r.complete) {
+          removed = db.prepare(
+            'DELETE FROM tg_messages WHERE conversation_id = ? AND tg_message_id IS NOT NULL',
+          ).run(conv.id).changes as number
+        }
+      } else {
+        const ph = r.ids.map(() => '?').join(',')
+        removed = (r.complete
+          ? db.prepare(`DELETE FROM tg_messages WHERE conversation_id = ?
+              AND tg_message_id IS NOT NULL AND tg_message_id NOT IN (${ph})`)
+            .run(conv.id, ...r.ids)
+          : db.prepare(`DELETE FROM tg_messages WHERE conversation_id = ?
+              AND tg_message_id IS NOT NULL AND tg_message_id >= ? AND tg_message_id NOT IN (${ph})`)
+            .run(conv.id, Math.min(...r.ids), ...r.ids)
+        ).changes as number
+      }
+      if (removed > 0) console.log(`[tg-bot] reconcile: ${removed} message(s) removed from conv ${conv.id}`)
+    } catch (e) {
+      console.error('[tg-bot reconcile]', conv.id, (e as Error).message)
+    }
+  }
+}
+
+/**
  * Send a bot/Alena message to the candidate, simulating a human: mark the
  * chat read, show "typing…", pause proportionally to length, then send.
  * A line break splits the text into separate Telegram messages — the way a
@@ -496,26 +539,6 @@ export async function importAllDialogs(): Promise<void> {
             m.date ? new Date(m.date * 1000).toISOString() : undefined,
           )
           if (m.id > maxId) maxId = m.id
-        }
-        // Reconcile deletions: drop local messages no longer on Telegram.
-        // When the whole history fits in the fetched window (total ≤ limit)
-        // anything missing was deleted; otherwise only reconcile within the
-        // fetched id range to avoid removing older, un-fetched messages.
-        const fetchedIds = dlg.messages.map(m => m.id)
-        if (fetchedIds.length) {
-          const ph = fetchedIds.map(() => '?').join(',')
-          if (dlg.complete) {
-            db.prepare(`
-              DELETE FROM tg_messages WHERE conversation_id = ?
-              AND tg_message_id IS NOT NULL AND tg_message_id NOT IN (${ph})
-            `).run(convId, ...fetchedIds)
-          } else {
-            db.prepare(`
-              DELETE FROM tg_messages WHERE conversation_id = ?
-              AND tg_message_id IS NOT NULL AND tg_message_id >= ?
-              AND tg_message_id NOT IN (${ph})
-            `).run(convId, Math.min(...fetchedIds), ...fetchedIds)
-          }
         }
         db.prepare(
           'UPDATE tg_conversations SET last_seen_message_id = MAX(last_seen_message_id, ?) WHERE id = ?',

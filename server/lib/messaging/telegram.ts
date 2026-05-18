@@ -431,6 +431,26 @@ export async function telegramGetPeerState(
   }
 }
 
+/**
+ * Current message ids in a chat — used to reconcile deletions. `complete` is
+ * true when the whole history fit in the fetch (so anything missing locally
+ * was deleted, not just out of the fetched window).
+ */
+export async function telegramFetchMessageIds(
+  peerId: string, accessHash: string | null, limit = 60,
+): Promise<{ ids: number[]; complete: boolean } | null> {
+  if (!activeClient) return null
+  try {
+    const peer = await resolvePeer(peerId, accessHash)
+    const msgs = await activeClient.getMessages(peer as never, { limit })
+    const total = (msgs as unknown as { total?: number }).total ?? msgs.length
+    return { ids: msgs.map(m => m.id), complete: total <= limit }
+  } catch (e) {
+    console.error('[telegram fetchIds]', (e as Error).message)
+    return null
+  }
+}
+
 /** Delete a message on Telegram for everyone (revoke), like the Telegram app. */
 export async function telegramDeleteMessage(
   peerId: string, accessHash: string | null, tgMessageId: number,
@@ -489,7 +509,6 @@ export interface TgDialog {
   name: string
   username?: string
   phone?: string
-  complete: boolean      // true when the whole history fit in the fetch
   messages: TgDialogMsg[]
 }
 
@@ -518,7 +537,6 @@ export async function telegramFetchDialogs(
       const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
         || user.username || String(user.id)
       const msgs = await activeClient.getMessages(entity as never, { limit: msgsPerDialog })
-      const total = (msgs as unknown as { total?: number }).total ?? msgs.length
       const messages: TgDialogMsg[] = msgs
         .map(m => ({ id: m.id, text: messageText(m), out: !!m.out, date: m.date || 0 }))
         .filter(m => m.text.length > 0)
@@ -529,7 +547,6 @@ export async function telegramFetchDialogs(
         name,
         username: user.username || undefined,
         phone: user.phone || undefined,
-        complete: total <= msgsPerDialog,
         messages,
       })
     } catch (e) {
