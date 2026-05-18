@@ -376,6 +376,16 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   const [err, setErr] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const loadedDraftRef = useRef<number | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+
+  // Composer auto-grows with its content up to 3 lines, then scrolls.
+  const COMPOSER_MAX = 88
+  const autoGrow = useCallback(() => {
+    const el = composerRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, COMPOSER_MAX) + 'px'
+  }, [])
 
   const load = useCallback(async () => {
     const r = await telegramApi.conversation(convId)
@@ -395,6 +405,9 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages.length])
+
+  // Resize the composer whenever its text changes — typing or a loaded draft.
+  useEffect(() => { autoGrow() }, [reply, autoGrow])
 
   // In review mode the bot's suggested reply is loaded straight into the
   // composer for Alena to edit or send. Each draft is loaded only once, so
@@ -490,6 +503,7 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
       )}
       <div style={{ display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <textarea
+          ref={composerRef}
           value={reply}
           onChange={e => setReply(e.target.value)}
           onKeyDown={e => {
@@ -502,8 +516,9 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
           rows={1}
           style={{
             flex: 1, resize: 'none', padding: '9px 12px', borderRadius: 9, fontSize: 13,
+            lineHeight: 1.45,
             border: '1px solid var(--border)', background: 'var(--surface-2)', fontFamily: 'inherit',
-            boxSizing: 'border-box', maxHeight: 120,
+            boxSizing: 'border-box', maxHeight: COMPOSER_MAX, overflowY: 'auto',
           }}
         />
         <button
