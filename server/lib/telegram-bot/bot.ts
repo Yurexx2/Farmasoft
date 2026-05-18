@@ -4,7 +4,7 @@ import { getDb } from '../../db'
 import { callClaude, ChatTurn } from './claude'
 import {
   telegramSendToPeer, telegramSetTyping, telegramMarkRead,
-  telegramFetchSince, telegramIsConnected, InboundTelegram,
+  telegramFetchSince, telegramFetchDialogs, telegramIsConnected, InboundTelegram,
 } from '../messaging/telegram'
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -112,17 +112,23 @@ export function startConversation(opts: {
 function insertMessage(
   convId: number, direction: 'in' | 'out', sender: 'candidate' | 'bot' | 'alena',
   text: string, tgMessageId: number | null, status: 'sent' | 'pending_review' | 'discarded',
+  createdAt?: string,
 ): number {
   const db = getDb()
   try {
-    const r = db.prepare(`
-      INSERT INTO tg_messages (conversation_id, direction, sender, text, tg_message_id, status)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(convId, direction, sender, text, tgMessageId, status)
+    const r = createdAt
+      ? db.prepare(`
+          INSERT INTO tg_messages (conversation_id, direction, sender, text, tg_message_id, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(convId, direction, sender, text, tgMessageId, status, createdAt)
+      : db.prepare(`
+          INSERT INTO tg_messages (conversation_id, direction, sender, text, tg_message_id, status)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(convId, direction, sender, text, tgMessageId, status)
     db.prepare('UPDATE tg_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(convId)
     return r.lastInsertRowid as number
   } catch {
-    // Unique index hit — this inbound message was already stored.
+    // Unique index hit — this message was already stored.
     return 0
   }
 }
@@ -352,6 +358,96 @@ export async function processPendingConversations(convId?: number): Promise<void
     } catch (e) {
       console.error('[tg-bot pending]', conv.id, (e as Error).message)
     }
+  }
+}
+
+// ─── Dialog import — bring Alena's existing Telegram chats into the tab ──────
+export interface DialogSyncProgress {
+  status: 'idle' | 'running' | 'done' | 'error'
+  total: number
+  done: number
+  newConversations: number
+  error?: string
+}
+let dialogSync: DialogSyncProgress = { status: 'idle', total: 0, done: 0, newConversations: 0 }
+export function getDialogSyncProgress(): DialogSyncProgress { return dialogSync }
+
+function normPhone(p?: string | null): string {
+  return (p || '').replace(/\D/g, '').slice(-9)  // last 9 digits — country-code agnostic
+}
+
+/**
+ * Import every private conversation from the connected Telegram account into
+ * the tab. Threads are matched to a Farmasoft candidate by phone when possible;
+ * imported threads have the bot OFF (status 'human') so it never hijacks an
+ * existing personal chat — Alena enables it per-thread if she wants.
+ */
+export async function importAllDialogs(): Promise<void> {
+  if (dialogSync.status === 'running') return
+  dialogSync = { status: 'running', total: 0, done: 0, newConversations: 0 }
+  try {
+    if (!telegramIsConnected()) throw new Error('Telegram non connecté')
+    const dialogs = await telegramFetchDialogs(120, 30)
+    dialogSync.total = dialogs.length
+    const db = getDb()
+
+    // Index known candidates by phone for matching.
+    const cands = db.prepare(
+      "SELECT id, phone, job_id FROM candidates WHERE phone IS NOT NULL AND phone != ''",
+    ).all() as { id: number; phone: string; job_id: number | null }[]
+    const byPhone = new Map<string, { id: number; job_id: number | null }>()
+    for (const c of cands) {
+      const k = normPhone(c.phone)
+      if (k) byPhone.set(k, { id: c.id, job_id: c.job_id })
+    }
+
+    for (const dlg of dialogs) {
+      try {
+        const existing = db.prepare(
+          'SELECT id, last_seen_message_id FROM tg_conversations WHERE peer_id = ?',
+        ).get(dlg.peerId) as { id: number; last_seen_message_id: number } | undefined
+        const match = dlg.phone ? byPhone.get(normPhone(dlg.phone)) : undefined
+
+        let convId: number
+        if (existing) {
+          convId = existing.id
+          db.prepare(`
+            UPDATE tg_conversations SET peer_name = ?, peer_username = ?,
+            peer_phone = COALESCE(peer_phone, ?) WHERE id = ?
+          `).run(dlg.name, dlg.username ?? null, dlg.phone ?? null, convId)
+        } else {
+          const r = db.prepare(`
+            INSERT INTO tg_conversations
+              (candidate_id, job_id, peer_id, peer_name, peer_username, peer_phone, status, bot_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, 'human', 0)
+          `).run(match?.id ?? null, match?.job_id ?? null, dlg.peerId, dlg.name,
+                 dlg.username ?? null, dlg.phone ?? null)
+          convId = r.lastInsertRowid as number
+          dialogSync.newConversations++
+        }
+
+        let maxId = existing?.last_seen_message_id ?? 0
+        for (const m of dlg.messages) {
+          insertMessage(
+            convId, m.out ? 'out' : 'in', m.out ? 'alena' : 'candidate',
+            m.text, m.id, 'sent',
+            m.date ? new Date(m.date * 1000).toISOString() : undefined,
+          )
+          if (m.id > maxId) maxId = m.id
+        }
+        db.prepare(
+          'UPDATE tg_conversations SET last_seen_message_id = MAX(last_seen_message_id, ?) WHERE id = ?',
+        ).run(maxId, convId)
+      } catch (e) {
+        console.error('[tg-bot import dialog]', (e as Error).message)
+      }
+      dialogSync.done++
+    }
+    dialogSync.status = 'done'
+    console.log(`[tg-bot] dialog import done — ${dialogSync.total} threads, ${dialogSync.newConversations} new`)
+  } catch (e) {
+    dialogSync = { ...dialogSync, status: 'error', error: (e as Error).message }
+    console.error('[tg-bot import]', (e as Error).message)
   }
 }
 

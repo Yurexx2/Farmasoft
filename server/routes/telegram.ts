@@ -5,6 +5,7 @@ import {
   getBotSettings, saveBotSettings,
   generateDraft, approveDraft, discardDraft, sendBotMessage,
   processPendingConversations, getKnowledgeText, saveKnowledgeText,
+  importAllDialogs, getDialogSyncProgress,
 } from '../lib/telegram-bot/bot'
 
 const router = Router()
@@ -59,7 +60,7 @@ router.get('/conversations', (_req: Request, res: Response) => {
     const rows = db.prepare(`
       SELECT
         c.id, c.candidate_id, c.job_id, c.status, c.bot_enabled,
-        c.turn_count, c.created_at, c.updated_at,
+        c.turn_count, c.created_at, c.updated_at, c.peer_name,
         cand.name AS candidate_name, cand.full_name AS candidate_full_name,
         cand.role AS candidate_role, cand.photo_url AS candidate_photo,
         j.title AS job_title,
@@ -76,6 +77,24 @@ router.get('/conversations', (_req: Request, res: Response) => {
       ORDER BY c.updated_at DESC
     `).all()
     res.json({ data: rows })
+  } catch (e: unknown) {
+    res.json({ error: (e as Error).message })
+  }
+})
+
+// ─── Import existing Telegram dialogs ────────────────────────────────────────
+router.post('/sync-dialogs', (_req: Request, res: Response) => {
+  try {
+    importAllDialogs().catch(e => console.error('[tg sync-dialogs]', (e as Error).message))
+    res.json({ data: { started: true } })
+  } catch (e: unknown) {
+    res.json({ error: (e as Error).message })
+  }
+})
+
+router.get('/sync-dialogs/status', (_req: Request, res: Response) => {
+  try {
+    res.json({ data: getDialogSyncProgress() })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })
   }

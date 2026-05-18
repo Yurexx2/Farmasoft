@@ -222,5 +222,9 @@ export function getDb(): DatabaseSync {
              WHERE tg_message_id IS NOT NULL`)
   } catch { /* already exists */ }
 
+  // Telegram display name of the peer — used when the conversation is not
+  // (yet) linked to a candidate, e.g. dialogs imported from Alena's account.
+  try { db.exec('ALTER TABLE tg_conversations ADD COLUMN peer_name TEXT') } catch { /* already exists */ }
+
   return db
 }

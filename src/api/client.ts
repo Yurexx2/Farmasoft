@@ -226,6 +226,16 @@ export const telegramApi = {
   knowledge: () => req<{ text: string }>('/telegram/knowledge'),
   saveKnowledge: (text: string) =>
     req<{ text: string }>('/telegram/knowledge', { method: 'POST', ...body({ text }) }),
+  syncDialogs: () => req<{ started: boolean }>('/telegram/sync-dialogs', { method: 'POST' }),
+  syncStatus: () => req<DialogSyncProgress>('/telegram/sync-dialogs/status'),
+}
+
+export interface DialogSyncProgress {
+  status: 'idle' | 'running' | 'done' | 'error'
+  total: number
+  done: number
+  newConversations: number
+  error?: string
 }
 
 export interface TgBotSettings {
@@ -248,6 +258,7 @@ export interface TgConversation {
   candidate_full_name: string | null
   candidate_role: string | null
   candidate_photo: string | null
+  peer_name: string | null
   job_title: string | null
   last_text: string | null
   last_direction: 'in' | 'out' | null

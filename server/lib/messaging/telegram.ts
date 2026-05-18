@@ -345,6 +345,56 @@ export async function telegramFetchSince(
   }
 }
 
+// ─── Dialog import — pull Alena's existing Telegram chats ────────────────────
+export interface TgDialogMsg { id: number; text: string; out: boolean; date: number }
+export interface TgDialog {
+  peerId: string
+  name: string
+  username?: string
+  phone?: string
+  messages: TgDialogMsg[]
+}
+
+/**
+ * Fetch the most recent private (one-to-one) conversations from the connected
+ * account, with a slice of each thread's message history. Groups, channels and
+ * bots are skipped.
+ */
+export async function telegramFetchDialogs(
+  maxDialogs = 80, msgsPerDialog = 30,
+): Promise<TgDialog[]> {
+  if (!activeClient) return []
+  const out: TgDialog[] = []
+  const dialogs = await activeClient.getDialogs({ limit: maxDialogs })
+  for (const d of dialogs) {
+    try {
+      const entity = (d as unknown as { entity?: { className?: string } }).entity
+      if (!entity || entity.className !== 'User') continue
+      const user = entity as unknown as {
+        id: unknown; firstName?: string; lastName?: string
+        username?: string; phone?: string; bot?: boolean; self?: boolean
+      }
+      if (user.bot || user.self) continue
+      const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
+        || user.username || String(user.id)
+      const msgs = await activeClient.getMessages(entity as never, { limit: msgsPerDialog })
+      const messages: TgDialogMsg[] = msgs
+        .filter(m => (m.message || '').length > 0)
+        .map(m => ({ id: m.id, text: m.message || '', out: !!m.out, date: m.date || 0 }))
+        .sort((a, b) => a.id - b.id)
+      out.push({
+        peerId: String(user.id), name,
+        username: user.username || undefined,
+        phone: user.phone || undefined,
+        messages,
+      })
+    } catch (e) {
+      console.error('[telegram dialog]', (e as Error).message)
+    }
+  }
+  return out
+}
+
 export function telegramIsConnected(): boolean {
   if (!activeClient || !activeCreds) return false
   // `connected` reflects the live MTProto socket. A client object can linger

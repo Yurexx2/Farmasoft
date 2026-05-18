@@ -91,7 +91,7 @@ export function TelegramPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <Header settings={settings} onChange={loadSettings} t={t} draftsTotal={draftsTotal} />
+      <Header settings={settings} onChange={loadSettings} onSynced={loadConversations} t={t} draftsTotal={draftsTotal} />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: 0 }}>
         {/* Conversation list */}
@@ -142,17 +142,33 @@ export function TelegramPage() {
 }
 
 // ─── header — title + global bot settings ──────────────────────────────────
-function Header({ settings, onChange, t, draftsTotal }: {
+function Header({ settings, onChange, onSynced, t, draftsTotal }: {
   settings: TgBotSettings
   onChange: () => void
+  onSynced: () => void
   t: typeof T['ua']['tg']
   draftsTotal: number
 }) {
   const [showKnowledge, setShowKnowledge] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   async function save(patch: Partial<Pick<TgBotSettings, 'enabled' | 'mode'>>) {
     await telegramApi.saveSettings(patch)
     onChange()
+  }
+
+  async function syncDialogs() {
+    if (syncing) return
+    setSyncing(true)
+    await telegramApi.syncDialogs()
+    const poll = setInterval(async () => {
+      const r = await telegramApi.syncStatus()
+      onSynced()  // refresh the list as threads land
+      if (r.data && (r.data.status === 'done' || r.data.status === 'error')) {
+        clearInterval(poll)
+        setSyncing(false)
+      }
+    }, 2000)
   }
 
   return (
@@ -168,6 +184,9 @@ function Header({ settings, onChange, t, draftsTotal }: {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" disabled={syncing} onClick={syncDialogs}>
+            {syncing ? `⏳ ${t.syncing}` : `🔄 ${t.sync}`}
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowKnowledge(true)}>
             📖 {t.knowledge}
           </button>
@@ -302,7 +321,7 @@ function ConversationRow({ conv, active, locale, t, onClick }: {
   t: typeof T['ua']['tg']
   onClick: () => void
 }) {
-  const name = conv.candidate_full_name || conv.candidate_name || '—'
+  const name = conv.candidate_full_name || conv.candidate_name || conv.peer_name || '—'
   const preview = (conv.last_direction === 'out' ? '↪ ' : '') + (conv.last_text || '')
   return (
     <div
@@ -390,7 +409,7 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
 
   if (!conv) return <div style={{ padding: 24, color: 'var(--text-3)' }}>{T['ua'].dashboard.loading}</div>
 
-  const name = conv.candidate_full_name || conv.candidate_name || '—'
+  const name = conv.candidate_full_name || conv.candidate_name || conv.peer_name || '—'
   const draft = messages.find(m => m.status === 'pending_review')
   const visible = messages.filter(m => m.status !== 'pending_review' && m.status !== 'discarded')
 

@@ -57,6 +57,9 @@ export const T = {
       knowledgeResetConfirm: 'Restore the default knowledge base? Your edits will be lost.',
       close: 'Close',
       draftsWaiting: (n: number) => `${n} draft${n !== 1 ? 's' : ''} to review`,
+      sync: 'Import chats',
+      syncing: 'Importing…',
+      syncDone: (n: number) => `${n} conversation${n !== 1 ? 's' : ''} imported`,
     },
 
     dashboard: {
@@ -496,6 +499,9 @@ export const T = {
       knowledgeResetConfirm: 'Відновити типову базу знань? Ваші зміни буде втрачено.',
       close: 'Закрити',
       draftsWaiting: (n: number) => `${n} чернет${n === 1 ? 'ка' : n < 5 ? 'ки' : 'ок'} на перевірку`,
+      sync: 'Імпорт чатів',
+      syncing: 'Імпорт…',
+      syncDone: (n: number) => `Імпортовано розмов: ${n}`,
     },
 
     dashboard: {
