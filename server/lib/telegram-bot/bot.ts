@@ -68,6 +68,7 @@ interface ConvRow {
   candidate_id: number | null
   job_id: number | null
   peer_id: string | null
+  peer_access_hash: string | null
   peer_username: string | null
   peer_phone: string | null
   status: string
@@ -86,6 +87,7 @@ export function startConversation(opts: {
   candidateId: number
   jobId: number | null
   peerId: string
+  accessHash?: string | null
   peerPhone?: string | null
   firstMessage: string
   tgMessageId: number
@@ -96,13 +98,13 @@ export function startConversation(opts: {
   let convId: number
   if (existing) {
     convId = existing.id
-    db.prepare('UPDATE tg_conversations SET peer_id = ?, peer_phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(opts.peerId, opts.peerPhone ?? null, convId)
+    db.prepare('UPDATE tg_conversations SET peer_id = ?, peer_access_hash = ?, peer_phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(opts.peerId, opts.accessHash ?? null, opts.peerPhone ?? null, convId)
   } else {
     const r = db.prepare(`
-      INSERT INTO tg_conversations (candidate_id, job_id, peer_id, peer_phone, status, bot_enabled)
-      VALUES (?, ?, ?, ?, 'awaiting_reply', 1)
-    `).run(opts.candidateId, opts.jobId, opts.peerId, opts.peerPhone ?? null)
+      INSERT INTO tg_conversations (candidate_id, job_id, peer_id, peer_access_hash, peer_phone, status, bot_enabled)
+      VALUES (?, ?, ?, ?, ?, 'awaiting_reply', 1)
+    `).run(opts.candidateId, opts.jobId, opts.peerId, opts.accessHash ?? null, opts.peerPhone ?? null)
     convId = r.lastInsertRowid as number
   }
   insertMessage(convId, 'out', 'alena', opts.firstMessage, opts.tgMessageId, 'sent')
@@ -278,13 +280,13 @@ export async function sendBotMessage(
   if (!conv?.peer_id) return { ok: false, error: 'Conversation sans destinataire' }
   if (!telegramIsConnected()) return { ok: false, error: 'Telegram non connecté' }
 
-  await telegramMarkRead(conv.peer_id)
-  await telegramSetTyping(conv.peer_id)
+  await telegramMarkRead(conv.peer_id, conv.peer_access_hash)
+  await telegramSetTyping(conv.peer_id, conv.peer_access_hash)
   // Human-like pause: ~45ms per character, clamped to 2–7s.
   const pause = Math.min(7000, Math.max(2000, text.length * 45))
   await new Promise(r => setTimeout(r, pause))
 
-  const sent = await telegramSendToPeer(conv.peer_id, text)
+  const sent = await telegramSendToPeer(conv.peer_id, conv.peer_access_hash, text)
   if (!sent.ok) return { ok: false, error: sent.error }
 
   insertMessage(convId, 'out', sender, text, sent.messageId ?? null, 'sent')
@@ -303,7 +305,7 @@ export async function recoverMissed(): Promise<void> {
 
   for (const conv of convs) {
     try {
-      const missed = await telegramFetchSince(conv.peer_id!, conv.last_seen_message_id)
+      const missed = await telegramFetchSince(conv.peer_id!, conv.peer_access_hash, conv.last_seen_message_id)
       let newest = conv.last_seen_message_id
       let gotInbound = false
       for (const m of missed) {
@@ -413,14 +415,15 @@ export async function importAllDialogs(): Promise<void> {
           convId = existing.id
           db.prepare(`
             UPDATE tg_conversations SET peer_name = ?, peer_username = ?,
+            peer_access_hash = COALESCE(?, peer_access_hash),
             peer_phone = COALESCE(peer_phone, ?) WHERE id = ?
-          `).run(dlg.name, dlg.username ?? null, dlg.phone ?? null, convId)
+          `).run(dlg.name, dlg.username ?? null, dlg.accessHash ?? null, dlg.phone ?? null, convId)
         } else {
           const r = db.prepare(`
             INSERT INTO tg_conversations
-              (candidate_id, job_id, peer_id, peer_name, peer_username, peer_phone, status, bot_enabled)
-            VALUES (?, ?, ?, ?, ?, ?, 'human', 0)
-          `).run(match?.id ?? null, match?.job_id ?? null, dlg.peerId, dlg.name,
+              (candidate_id, job_id, peer_id, peer_access_hash, peer_name, peer_username, peer_phone, status, bot_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'human', 0)
+          `).run(match?.id ?? null, match?.job_id ?? null, dlg.peerId, dlg.accessHash ?? null, dlg.name,
                  dlg.username ?? null, dlg.phone ?? null)
           convId = r.lastInsertRowid as number
           dialogSync.newConversations++

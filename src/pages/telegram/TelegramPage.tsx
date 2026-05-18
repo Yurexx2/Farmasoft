@@ -387,6 +387,7 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   const [messages, setMessages] = useState<TgMessage[]>([])
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -414,12 +415,30 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   const draft = messages.find(m => m.status === 'pending_review')
   const visible = messages.filter(m => m.status !== 'pending_review' && m.status !== 'discarded')
 
+  // Runs an action and surfaces any API error to the user (the send/approve
+  // endpoints return { error } rather than throwing).
   async function act(fn: () => Promise<unknown>) {
     setBusy(true)
-    await fn()
+    setErr('')
+    const r = await fn()
+    if (r && typeof r === 'object' && 'error' in r && (r as { error?: string }).error) {
+      setErr(String((r as { error?: string }).error))
+    }
     await load()
     onChanged()
     setBusy(false)
+  }
+
+  // Send the typed message; keep the text in the box if the send failed so
+  // nothing is lost.
+  async function doSend() {
+    const text = reply.trim()
+    if (!text) return
+    await act(async () => {
+      const r = await telegramApi.send(convId, text)
+      if (!r.error) setReply('')
+      return r
+    })
   }
 
   return (
@@ -488,6 +507,12 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
       )}
 
       {/* composer */}
+      {err && (
+        <div style={{
+          padding: '8px 16px', background: '#FEF2F2', color: '#DC2626', fontSize: 12,
+          borderTop: '1px solid #FCA5A5', flexShrink: 0,
+        }}>⚠ {err}</div>
+      )}
       <div style={{ display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <textarea
           value={reply}
@@ -495,7 +520,7 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              if (reply.trim()) act(async () => { await telegramApi.send(convId, reply.trim()); setReply('') })
+              if (reply.trim()) doSend()
             }
           }}
           placeholder={t.writeMessage}
@@ -508,7 +533,7 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
         />
         <button
           className="btn btn-primary btn-sm" disabled={busy || !reply.trim()}
-          onClick={() => act(async () => { await telegramApi.send(convId, reply.trim()); setReply('') })}
+          onClick={doSend}
         >{t.send}</button>
       </div>
     </div>

@@ -237,7 +237,7 @@ export async function telegramDisconnect(): Promise<void> {
 export async function telegramSend(
   toPhoneOrUsername: string,
   message: string,
-): Promise<{ ok: boolean; messageId?: number; peerId?: string; error?: string }> {
+): Promise<{ ok: boolean; messageId?: number; peerId?: string; accessHash?: string; error?: string }> {
   if (!activeClient || !activeCreds) return { ok: false, error: 'Compte Telegram non connecté' }
   try {
     let target: string | number = toPhoneOrUsername.trim()
@@ -258,7 +258,7 @@ export async function telegramSend(
         const user = result.users?.[0]
         if (!user) return { ok: false, error: 'Numéro pas inscrit sur Telegram' }
         const sent = await activeClient.sendMessage(user as never, { message }) as { id: number }
-        return { ok: true, messageId: sent.id, peerId: String(user.id) }
+        return { ok: true, messageId: sent.id, peerId: String(user.id), accessHash: user.accessHash != null ? String(user.accessHash) : undefined }
       } catch (e: unknown) {
         return { ok: false, error: 'Numéro non joignable sur Telegram: ' + (e as Error).message }
       }
@@ -266,9 +266,9 @@ export async function telegramSend(
 
     // Otherwise try as username
     if (!target.startsWith('@')) target = '@' + target
-    const entity = await activeClient.getEntity(target as string) as unknown as { id: bigint }
+    const entity = await activeClient.getEntity(target as string) as unknown as { id: bigint; accessHash?: bigint }
     const sent = await activeClient.sendMessage(entity as never, { message }) as { id: number }
-    return { ok: true, messageId: sent.id, peerId: String(entity.id) }
+    return { ok: true, messageId: sent.id, peerId: String(entity.id), accessHash: entity.accessHash != null ? String(entity.accessHash) : undefined }
   } catch (err: unknown) {
     return { ok: false, error: (err as Error).message }
   }
@@ -276,21 +276,30 @@ export async function telegramSend(
 
 // ─── Bot helpers — operate on a stored peerId (Telegram user id string) ──────
 
-/** Resolve a stored peerId back to a usable GramJS entity. */
-async function resolvePeer(peerId: string): Promise<Api.TypeInputPeer | string> {
+/**
+ * Resolve a stored peer to a usable GramJS input peer. When the access hash
+ * is known (persisted in the DB) it builds the input peer directly — this is
+ * the only path that survives a server restart, since GramJS keeps its entity
+ * cache in memory only. Falls back to the cache for legacy rows without a hash.
+ */
+async function resolvePeer(peerId: string, accessHash?: string | null): Promise<Api.TypeInputPeer> {
   if (!activeClient) throw new Error('Compte Telegram non connecté')
-  // GramJS caches the access hash in the session after first contact, so
-  // getInputEntity works from the bare numeric id on subsequent calls.
-  return await activeClient.getInputEntity(BigInt(peerId) as unknown as never)
+  if (accessHash) {
+    return new Api.InputPeerUser({
+      userId: BigInt(peerId) as unknown as never,
+      accessHash: BigInt(accessHash) as unknown as never,
+    })
+  }
+  return await activeClient.getInputEntity(BigInt(peerId) as unknown as never) as Api.TypeInputPeer
 }
 
 /** Send a message to a peer the bot is already in a conversation with. */
 export async function telegramSendToPeer(
-  peerId: string, message: string,
+  peerId: string, accessHash: string | null, message: string,
 ): Promise<{ ok: boolean; messageId?: number; error?: string }> {
   if (!activeClient) return { ok: false, error: 'Compte Telegram non connecté' }
   try {
-    const peer = await resolvePeer(peerId)
+    const peer = await resolvePeer(peerId, accessHash)
     const sent = await activeClient.sendMessage(peer as never, { message }) as { id: number }
     return { ok: true, messageId: sent.id }
   } catch (err: unknown) {
@@ -299,10 +308,10 @@ export async function telegramSendToPeer(
 }
 
 /** Show the "typing…" indicator to a peer (auto-clears after ~6s). */
-export async function telegramSetTyping(peerId: string): Promise<void> {
+export async function telegramSetTyping(peerId: string, accessHash?: string | null): Promise<void> {
   if (!activeClient) return
   try {
-    const peer = await resolvePeer(peerId)
+    const peer = await resolvePeer(peerId, accessHash)
     await activeClient.invoke(new Api.messages.SetTyping({
       peer: peer as never,
       action: new Api.SendMessageTypingAction(),
@@ -311,10 +320,10 @@ export async function telegramSetTyping(peerId: string): Promise<void> {
 }
 
 /** Mark the conversation as read up to the latest message. */
-export async function telegramMarkRead(peerId: string): Promise<void> {
+export async function telegramMarkRead(peerId: string, accessHash?: string | null): Promise<void> {
   if (!activeClient) return
   try {
-    const peer = await resolvePeer(peerId)
+    const peer = await resolvePeer(peerId, accessHash)
     await activeClient.invoke(new Api.messages.ReadHistory({ peer: peer as never }))
   } catch { /* non-critical */ }
 }
@@ -324,11 +333,11 @@ export async function telegramMarkRead(peerId: string): Promise<void> {
  * candidate replies that arrived while the bot/server was offline.
  */
 export async function telegramFetchSince(
-  peerId: string, minId: number,
+  peerId: string, accessHash: string | null, minId: number,
 ): Promise<InboundTelegram[]> {
   if (!activeClient) return []
   try {
-    const peer = await resolvePeer(peerId)
+    const peer = await resolvePeer(peerId, accessHash)
     const messages = await activeClient.getMessages(peer as never, { minId, limit: 100 })
     return messages
       .filter(m => !m.out && (m.message || '').length > 0)
@@ -349,6 +358,7 @@ export async function telegramFetchSince(
 export interface TgDialogMsg { id: number; text: string; out: boolean; date: number }
 export interface TgDialog {
   peerId: string
+  accessHash?: string
   name: string
   username?: string
   phone?: string
@@ -371,7 +381,7 @@ export async function telegramFetchDialogs(
       const entity = (d as unknown as { entity?: { className?: string } }).entity
       if (!entity || entity.className !== 'User') continue
       const user = entity as unknown as {
-        id: unknown; firstName?: string; lastName?: string
+        id: unknown; accessHash?: unknown; firstName?: string; lastName?: string
         username?: string; phone?: string; bot?: boolean; self?: boolean
       }
       // Skip bots, the account's own Saved Messages, and the official
@@ -385,7 +395,9 @@ export async function telegramFetchDialogs(
         .map(m => ({ id: m.id, text: m.message || '', out: !!m.out, date: m.date || 0 }))
         .sort((a, b) => a.id - b.id)
       out.push({
-        peerId: String(user.id), name,
+        peerId: String(user.id),
+        accessHash: user.accessHash != null ? String(user.accessHash) : undefined,
+        name,
         username: user.username || undefined,
         phone: user.phone || undefined,
         messages,

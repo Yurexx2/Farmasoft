@@ -164,6 +164,7 @@ export async function sendToCandidate(opts: {
                 candidateId: opts.candidateId,
                 jobId: (candidate.job_id as number) ?? null,
                 peerId: send.peerId,
+                accessHash: send.accessHash ?? null,
                 peerPhone: phone,
                 firstMessage: opts.message,
                 tgMessageId: send.messageId,

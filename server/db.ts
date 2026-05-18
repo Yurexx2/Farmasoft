@@ -225,6 +225,10 @@ export function getDb(): DatabaseSync {
   // Telegram display name of the peer — used when the conversation is not
   // (yet) linked to a candidate, e.g. dialogs imported from Alena's account.
   try { db.exec('ALTER TABLE tg_conversations ADD COLUMN peer_name TEXT') } catch { /* already exists */ }
+  // Peer access hash — required to message a user. GramJS keeps it only in
+  // memory and loses it on every restart, so we persist it to keep sending
+  // working after a redeploy.
+  try { db.exec('ALTER TABLE tg_conversations ADD COLUMN peer_access_hash TEXT') } catch { /* already exists */ }
 
   return db
 }
