@@ -585,11 +585,9 @@ function Bubble({ msg, locale, t, readMax, onDelete }: {
   return (
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8,
-               justifyContent: incoming ? 'flex-start' : 'flex-end' }}
+      style={{ display: 'flex', marginBottom: 8, justifyContent: incoming ? 'flex-start' : 'flex-end' }}
     >
-      {!incoming && delBtn}
-      <div style={{ maxWidth: '74%' }}>
+      <div style={{ maxWidth: '78%' }}>
         <div style={{
           fontSize: 10, color: 'var(--text-3)', marginBottom: 2,
           textAlign: incoming ? 'left' : 'right',
@@ -601,25 +599,29 @@ function Bubble({ msg, locale, t, readMax, onDelete }: {
             </span>
           )}
         </div>
-        {media ? (
-          /* media message (sticker, photo…) — rendered as a discreet label */
-          <div style={{
-            padding: '7px 12px', borderRadius: 12, fontSize: 12.5, fontStyle: 'italic',
-            background: 'var(--surface-2)', color: 'var(--text-3)',
-            border: '1px dashed var(--border)',
-          }}>{media}</div>
-        ) : (
-          <div style={{
-            padding: '8px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap',
-            background: incoming ? 'var(--surface)' : (msg.sender === 'bot' ? '#229ED9' : 'var(--accent)'),
-            color: incoming ? 'var(--text-1)' : '#fff',
-            border: incoming ? '1px solid var(--border)' : 'none',
-            borderBottomLeftRadius: incoming ? 3 : 12,
-            borderBottomRightRadius: incoming ? 12 : 3,
-          }}>{msg.text}</div>
-        )}
+        {/* bubble + trash on one row → the trash is centred on the bubble */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4,
+                      flexDirection: incoming ? 'row' : 'row-reverse' }}>
+          {media ? (
+            /* media message (sticker, photo…) — rendered as a discreet label */
+            <div style={{
+              padding: '7px 12px', borderRadius: 12, fontSize: 12.5, fontStyle: 'italic',
+              background: 'var(--surface-2)', color: 'var(--text-3)',
+              border: '1px dashed var(--border)',
+            }}>{media}</div>
+          ) : (
+            <div style={{
+              padding: '8px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap',
+              background: incoming ? 'var(--surface)' : (msg.sender === 'bot' ? '#229ED9' : 'var(--accent)'),
+              color: incoming ? 'var(--text-1)' : '#fff',
+              border: incoming ? '1px solid var(--border)' : 'none',
+              borderBottomLeftRadius: incoming ? 3 : 12,
+              borderBottomRightRadius: incoming ? 12 : 3,
+            }}>{msg.text}</div>
+          )}
+          {delBtn}
+        </div>
       </div>
-      {incoming && delBtn}
     </div>
   )
 }
