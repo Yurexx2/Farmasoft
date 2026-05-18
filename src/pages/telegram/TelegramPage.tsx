@@ -500,12 +500,6 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
           borderTop: '1px solid #FCA5A5', flexShrink: 0,
         }}>⚠ {err}</div>
       )}
-      {draft && (
-        <div style={{
-          padding: '6px 16px', background: '#F0F9FF', color: '#1B7FAE', fontSize: 11.5,
-          borderTop: '1px solid #BAE6FD', flexShrink: 0,
-        }}>🤖 {t.botSuggestion}</div>
-      )}
       <div style={{ display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <textarea
           ref={composerRef}
@@ -526,10 +520,6 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
             boxSizing: 'border-box', maxHeight: COMPOSER_MAX, overflowY: 'auto',
           }}
         />
-        <button
-          className="btn btn-ghost btn-sm" disabled={busy} title={t.regenerateTitle}
-          onClick={() => act(() => telegramApi.regenerate(convId))}
-        >🤖</button>
         <button
           className="btn btn-primary btn-sm" disabled={busy || !reply.trim()}
           onClick={doSend}
