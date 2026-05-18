@@ -3,6 +3,7 @@ import { StringSession } from 'telegram/sessions'
 import { computeCheck } from 'telegram/Password'
 import { ConnectionTCPObfuscated } from 'telegram/network'
 import { NewMessage, NewMessageEvent } from 'telegram/events'
+import { DeletedMessage } from 'telegram/events/DeletedMessage'
 
 export interface TelegramCreds {
   apiId: number
@@ -46,6 +47,12 @@ export interface InboundTelegram {
 }
 type InboundCb = (msg: InboundTelegram) => void
 let inboundCb: InboundCb | null = null
+
+// Fires when messages are deleted in the Telegram app — so Farmasoft can
+// drop them from its own view.
+type DeletedCb = (messageIds: number[]) => void
+let deletedCb: DeletedCb | null = null
+export function onTelegramDeleted(cb: DeletedCb): void { deletedCb = cb }
 
 // A short placeholder for a message that carries media instead of text
 // (sticker, photo, voice…) so the conversation never looks empty.
@@ -121,6 +128,16 @@ function attachInboundHandler(client: TelegramClient): void {
       console.error('[telegram inbound]', (e as Error).message)
     }
   }, new NewMessage({}))
+
+  // Messages deleted in the Telegram app → remove them from Farmasoft too.
+  client.addEventHandler((event: unknown) => {
+    try {
+      const ids = (event as { deletedIds?: number[] }).deletedIds || []
+      if (ids.length) deletedCb?.(ids)
+    } catch (e) {
+      console.error('[telegram deleted]', (e as Error).message)
+    }
+  }, new DeletedMessage({}))
 }
 
 // Pending auth state (in-memory, between phone-submit and code-submit)

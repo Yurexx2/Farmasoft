@@ -24,8 +24,8 @@ import telegramBotRouter from './routes/telegram'
 // lib/workua/ in case work.ua ever drops the protection.
 // import workuaRouter from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
-import { telegramIsConnected, onTelegramInbound } from './lib/messaging/telegram'
-import { handleInbound, recoverMissed, importAllDialogs } from './lib/telegram-bot/bot'
+import { telegramIsConnected, onTelegramInbound, onTelegramDeleted } from './lib/messaging/telegram'
+import { handleInbound, handleDeleted, recoverMissed, importAllDialogs } from './lib/telegram-bot/bot'
 import { apiAuth } from './middleware/auth'
 
 const app = express()
@@ -129,8 +129,10 @@ app.listen(PORT, () => {
     runFullSync().catch(e => console.error('[startup full-sync]', (e as Error).message))
   }
 
-  // Route every inbound Telegram private message into the recruiting bot.
+  // Route every inbound Telegram private message into the recruiting bot,
+  // and mirror message deletions made in the Telegram app.
   onTelegramInbound(handleInbound)
+  onTelegramDeleted(handleDeleted)
 
   // Reload Telegram session if previously authenticated, then recover any
   // candidate replies that arrived while the server was offline and import

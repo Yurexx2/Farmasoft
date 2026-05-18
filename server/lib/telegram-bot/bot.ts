@@ -297,6 +297,25 @@ export async function deleteMessage(messageId: number): Promise<{ ok: boolean; e
 }
 
 /**
+ * Remove messages that were deleted in the Telegram app. In private chats a
+ * deleted id is unique across the account, so matching on tg_message_id alone
+ * is safe. Registered as the global Telegram delete callback (see index.ts).
+ */
+export function handleDeleted(messageIds: number[]): void {
+  if (!messageIds.length) return
+  try {
+    const db = getDb()
+    const ph = messageIds.map(() => '?').join(',')
+    const r = db.prepare(`DELETE FROM tg_messages WHERE tg_message_id IN (${ph})`).run(...messageIds)
+    if ((r.changes as number) > 0) {
+      console.log(`[tg-bot] ${r.changes} message(s) removed — deleted on Telegram`)
+    }
+  } catch (e) {
+    console.error('[tg-bot handleDeleted]', (e as Error).message)
+  }
+}
+
+/**
  * Send a bot/Alena message to the candidate, simulating a human: mark the
  * chat read, show "typing…", pause proportionally to length, then send.
  * A line break splits the text into separate Telegram messages — the way a
@@ -477,6 +496,17 @@ export async function importAllDialogs(): Promise<void> {
             m.date ? new Date(m.date * 1000).toISOString() : undefined,
           )
           if (m.id > maxId) maxId = m.id
+        }
+        // Reconcile deletions: drop local messages that are no longer on
+        // Telegram within the fetched window (deleted while offline).
+        const fetchedIds = dlg.messages.map(m => m.id)
+        if (fetchedIds.length) {
+          const ph = fetchedIds.map(() => '?').join(',')
+          db.prepare(`
+            DELETE FROM tg_messages WHERE conversation_id = ?
+            AND tg_message_id IS NOT NULL AND tg_message_id >= ?
+            AND tg_message_id NOT IN (${ph})
+          `).run(convId, Math.min(...fetchedIds), ...fetchedIds)
         }
         db.prepare(
           'UPDATE tg_conversations SET last_seen_message_id = MAX(last_seen_message_id, ?) WHERE id = ?',

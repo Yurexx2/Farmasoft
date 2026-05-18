@@ -47,6 +47,17 @@ function timeAgo(iso?: string | null, locale = 'uk-UA'): string {
   return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })
 }
 
+// Telegram-style outlined trash icon.
+const iconTrash = (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+)
+
 // ─── main page ───────────────────────────────────────────────────────────────
 export function TelegramPage() {
   const { uiLang } = useAppStore()
@@ -498,9 +509,9 @@ function Thread({ convId, initialConv, t, locale, isMobile, onBack, onChanged, o
           onClick={() => { if (confirm(t.deleteConfirm)) act(async () => { await telegramApi.remove(convId); onDeleted() }) }}
           style={{
             background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)',
-            fontSize: 16, padding: 4, lineHeight: 1, flexShrink: 0,
+            padding: 4, lineHeight: 0, flexShrink: 0,
           }}
-        >🗑</button>
+        >{iconTrash}</button>
       </div>
 
       {/* messages */}
@@ -566,10 +577,10 @@ function Bubble({ msg, locale, t, readMax, onDelete }: {
       onClick={onDelete} title={t.delete}
       style={{
         background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)',
-        fontSize: 13, padding: 4, flexShrink: 0, lineHeight: 1,
+        padding: 4, flexShrink: 0, lineHeight: 0,
         opacity: hover ? 0.85 : 0, transition: 'opacity 120ms',
       }}
-    >🗑</button>
+    >{iconTrash}</button>
   )
   return (
     <div
