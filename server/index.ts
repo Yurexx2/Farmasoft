@@ -19,6 +19,7 @@ import salaryRouter from './routes/salary'
 import adminRouter from './routes/admin'
 import telegramBotRouter from './routes/telegram'
 import calendarRouter, { syncCalendly } from './routes/calendar'
+import { stripHtml } from './lib/text'
 // work.ua integration disabled — their employer dashboard sits behind a
 // Cloudflare bot-management challenge with no interactive element, which
 // blocks any automated browser. Source kept dormant in routes/workua.ts +
@@ -118,6 +119,19 @@ const stale = db.prepare(
 ).run()
 if ((stale.changes as number) > 0) {
   console.log(`[cleanup] ${stale.changes} candidate(s) with invalid profile URL removed`)
+}
+
+// Strip leftover HTML markup from job descriptions/requirements (older
+// robota.ua imports stored raw HTML).
+{
+  const htmlJobs = db.prepare(
+    "SELECT id, description, requirements FROM jobs WHERE description LIKE '%<%' OR requirements LIKE '%<%'",
+  ).all() as { id: number; description: string | null; requirements: string | null }[]
+  for (const j of htmlJobs) {
+    db.prepare('UPDATE jobs SET description = ?, requirements = ? WHERE id = ?')
+      .run(stripHtml(j.description), stripHtml(j.requirements), j.id)
+  }
+  if (htmlJobs.length > 0) console.log(`[cleanup] stripped HTML from ${htmlJobs.length} job description(s)`)
 }
 
 app.listen(PORT, () => {

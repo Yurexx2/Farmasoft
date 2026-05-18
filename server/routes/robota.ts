@@ -4,6 +4,7 @@ import https from 'https'
 import nodemailer from 'nodemailer'
 import { getDb } from '../db'
 import { callLLM } from '../lib/llm'
+import { stripHtml } from '../lib/text'
 
 const router = Router()
 
@@ -1633,7 +1634,7 @@ export async function runFullSync(): Promise<void> {
       const location    = (detail.cityName ?? v.cityName ?? '') as string
       const salaryMin   = ((detail.salaryRange as Record<string, unknown>)?.amountFrom ?? (v.salaryRange?.amountFrom) ?? 0) as number
       const salaryMax   = ((detail.salaryRange as Record<string, unknown>)?.amountTo   ?? (v.salaryRange?.amountTo)   ?? 0) as number
-      const description = (detail.description ?? v.description ?? '') as string
+      const description = stripHtml((detail.description ?? v.description ?? '') as string)
       const state       = (detail.state ?? v.state ?? '') as string
 
       // Find or create+update the linked Farmasoft job
