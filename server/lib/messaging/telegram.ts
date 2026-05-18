@@ -47,6 +47,38 @@ export interface InboundTelegram {
 type InboundCb = (msg: InboundTelegram) => void
 let inboundCb: InboundCb | null = null
 
+// A short placeholder for a message that carries media instead of text
+// (sticker, photo, voice…) so the conversation never looks empty.
+function describeMedia(media: unknown): string {
+  const m = media as {
+    className?: string
+    document?: { attributes?: Array<{ className?: string; alt?: string; voice?: boolean; roundMessage?: boolean }> }
+  } | undefined
+  if (!m?.className) return ''
+  if (m.className === 'MessageMediaPhoto') return '[фото]'
+  if (m.className === 'MessageMediaGeo' || m.className === 'MessageMediaGeoLive') return '[локація]'
+  if (m.className === 'MessageMediaContact') return '[контакт]'
+  if (m.className === 'MessageMediaPoll') return '[опитування]'
+  if (m.className === 'MessageMediaDocument') {
+    const attrs = m.document?.attributes || []
+    const sticker = attrs.find(a => a.className === 'DocumentAttributeSticker')
+    if (sticker) return sticker.alt ? `[стікер ${sticker.alt}]` : '[стікер]'
+    if (attrs.some(a => a.className === 'DocumentAttributeAnimated')) return '[GIF]'
+    const audio = attrs.find(a => a.className === 'DocumentAttributeAudio')
+    if (audio) return audio.voice ? '[голосове повідомлення]' : '[аудіо]'
+    const video = attrs.find(a => a.className === 'DocumentAttributeVideo')
+    if (video) return video.roundMessage ? '[відеоповідомлення]' : '[відео]'
+    return '[файл]'
+  }
+  return '[вкладення]'
+}
+
+/** Text of a message, or a placeholder if it carries only media. */
+function messageText(m: { message?: string; media?: unknown }): string {
+  if (m.message && m.message.trim()) return m.message
+  return describeMedia(m.media)
+}
+
 export function onTelegramInbound(cb: InboundCb): void {
   inboundCb = cb
 }
@@ -81,7 +113,7 @@ function attachInboundHandler(client: TelegramClient): void {
       inboundCb?.({
         peerId: String(senderId),
         messageId: msg.id,
-        text: msg.message || '',
+        text: messageText(msg),
         date: msg.date || Math.floor(Date.now() / 1000),
         name, username, phone, accessHash,
       })
@@ -377,13 +409,14 @@ export async function telegramFetchSince(
     const peer = await resolvePeer(peerId, accessHash)
     const messages = await activeClient.getMessages(peer as never, { minId, limit: 100 })
     return messages
-      .filter(m => !m.out && (m.message || '').length > 0)
+      .filter(m => !m.out)
       .map(m => ({
         peerId,
         messageId: m.id,
-        text: m.message || '',
+        text: messageText(m),
         date: m.date || Math.floor(Date.now() / 1000),
       }))
+      .filter(m => m.text.length > 0)
       .sort((a, b) => a.messageId - b.messageId)
   } catch (e) {
     console.error('[telegram fetchSince]', (e as Error).message)
@@ -428,8 +461,8 @@ export async function telegramFetchDialogs(
         || user.username || String(user.id)
       const msgs = await activeClient.getMessages(entity as never, { limit: msgsPerDialog })
       const messages: TgDialogMsg[] = msgs
-        .filter(m => (m.message || '').length > 0)
-        .map(m => ({ id: m.id, text: m.message || '', out: !!m.out, date: m.date || 0 }))
+        .map(m => ({ id: m.id, text: messageText(m), out: !!m.out, date: m.date || 0 }))
+        .filter(m => m.text.length > 0)
         .sort((a, b) => a.id - b.id)
       out.push({
         peerId: String(user.id),
