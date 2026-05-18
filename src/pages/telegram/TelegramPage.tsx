@@ -521,6 +521,9 @@ function Bubble({ msg, locale, t, onDelete }: {
   const [hover, setHover] = useState(false)
   const incoming = msg.direction === 'in'
   const senderLabel = msg.sender === 'bot' ? t.senderBot : msg.sender === 'alena' ? t.senderAlena : t.senderCandidate
+  // A media placeholder like "[стікер 👋]" — shown as a discreet label, no brackets.
+  const mediaMatch = msg.text.trim().match(/^\[(.+)\]$/)
+  const media = mediaMatch ? mediaMatch[1].charAt(0).toUpperCase() + mediaMatch[1].slice(1) : null
   const delBtn = (
     <button
       onClick={onDelete} title={t.delete}
@@ -543,14 +546,23 @@ function Bubble({ msg, locale, t, onDelete }: {
           fontSize: 10, color: 'var(--text-3)', marginBottom: 2,
           textAlign: incoming ? 'left' : 'right',
         }}>{senderLabel} · {timeAgo(msg.created_at, locale)}</div>
-        <div style={{
-          padding: '8px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap',
-          background: incoming ? 'var(--surface)' : (msg.sender === 'bot' ? '#229ED9' : 'var(--accent)'),
-          color: incoming ? 'var(--text-1)' : '#fff',
-          border: incoming ? '1px solid var(--border)' : 'none',
-          borderBottomLeftRadius: incoming ? 3 : 12,
-          borderBottomRightRadius: incoming ? 12 : 3,
-        }}>{msg.text}</div>
+        {media ? (
+          /* media message (sticker, photo…) — rendered as a discreet label */
+          <div style={{
+            padding: '7px 12px', borderRadius: 12, fontSize: 12.5, fontStyle: 'italic',
+            background: 'var(--surface-2)', color: 'var(--text-3)',
+            border: '1px dashed var(--border)',
+          }}>{media}</div>
+        ) : (
+          <div style={{
+            padding: '8px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap',
+            background: incoming ? 'var(--surface)' : (msg.sender === 'bot' ? '#229ED9' : 'var(--accent)'),
+            color: incoming ? 'var(--text-1)' : '#fff',
+            border: incoming ? '1px solid var(--border)' : 'none',
+            borderBottomLeftRadius: incoming ? 3 : 12,
+            borderBottomRightRadius: incoming ? 12 : 3,
+          }}>{msg.text}</div>
+        )}
       </div>
       {incoming && delBtn}
     </div>
