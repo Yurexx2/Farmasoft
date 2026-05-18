@@ -121,9 +121,9 @@ export function Dashboard() {
   return (
     <div style={{
       padding: isMobile ? '16px 16px 24px' : '28px 52px 28px', maxWidth: 1100, margin: '0 auto',
-      height: '100%', boxSizing: 'border-box',
+      minHeight: '100%', boxSizing: 'border-box',
       display: 'flex', flexDirection: 'column',
-      overflow: isMobile ? 'auto' : 'hidden',
+      overflow: 'auto',
     }}>
 
       {/* ── Header ── */}
