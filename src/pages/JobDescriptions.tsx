@@ -41,6 +41,14 @@ export function JobDescriptions() {
     setJobs(prev => prev.filter(j => j.id !== id))
   }
 
+  // Flip a posting active ↔ inactive (also publishes/closes it on robota.ua).
+  async function toggleActive(job: Job) {
+    const next = job.is_active ? 0 : 1
+    setJobs(prev => prev.map(j => j.id === job.id ? { ...j, is_active: next } : j))
+    const r = await api.jobs.update(job.id, { is_active: next })
+    if (r.data) setJobs(prev => prev.map(j => j.id === job.id ? r.data! : j))
+  }
+
   async function reloadJobs() {
     const r = await api.jobs.withCounts()
     if (r.data) {
@@ -219,18 +227,18 @@ export function JobDescriptions() {
                     {tj.candidates(count)}
                   </span>
                   <span
+                    onClick={e => { e.stopPropagation(); toggleActive(job) }}
                     style={{
                       fontSize: 10, fontWeight: 700, padding: '4px 11px', borderRadius: 20,
                       background: job.is_active ? '#DCFCE7' : '#FEE2E2',
                       color:      job.is_active ? '#15803D' : '#B91C1C',
                       border: `1px solid ${job.is_active ? '#86EFAC' : '#FCA5A5'}`,
-                      textTransform: 'uppercase', letterSpacing: 0.4,
+                      textTransform: 'uppercase', letterSpacing: 0.4, cursor: 'pointer',
+                      userSelect: 'none',
                     }}
                     title={job.robota_error
                       ? `Erreur robota.ua : ${job.robota_error}`
-                      : job.robota_state === 'Waiting' ? 'En attente de modération robota.ua'
-                      : job.robota_state === 'Publicated' ? 'Publiée sur robota.ua'
-                      : ''}
+                      : tj.toggleStatus}
                   >
                     {job.is_active ? tj.active : tj.inactive}
                   </span>
