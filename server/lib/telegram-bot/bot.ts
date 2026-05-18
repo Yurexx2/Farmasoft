@@ -475,7 +475,9 @@ ${calendly}
 або, якщо питання делікатне / поза скриптом / конфліктне:
 {"action": "handoff", "message": "<коротка причина для Альони>"}
 
-Повідомлення мають бути короткі, людяні, у стилі Telegram. Без зірочок, без markdown, без канцеляризмів.`
+Повідомлення мають бути короткі, людяні, у стилі Telegram. Без зірочок, без markdown,
+без канцеляризмів. НЕ став тире (—, –) як розділовий знак і НЕ роби списків з рисками —
+пиши звичайними реченнями, як жива людина пише в месенджері.`
 }
 
 interface ParsedReply { action: 'reply' | 'handoff'; message: string }
@@ -492,11 +494,20 @@ function parseReply(raw: string): ParsedReply {
   return { action: 'reply', message: raw }
 }
 
-/** Strip markdown emphasis Claude sometimes leaks into chat text. */
+/**
+ * Tidy Claude's output for a chat message: strip markdown, bullet markers and
+ * dashes-as-punctuation (they read robotic). Hyphens inside words — e.g. the
+ * Ukrainian "будь-який" — are kept.
+ */
 function sanitize(text: string): string {
   return (text || '')
     .replace(/\*+/g, '')
     .replace(/^#+\s*/gm, '')
+    // bullet-list markers at the start of a line
+    .replace(/^[ \t]*[-–—•]\s+/gm, '')
+    // a dash used as punctuation (surrounded by spaces) → comma
+    .replace(/ +[–—-]+ +/g, ', ')
+    .replace(/, ,/g, ',')
     .trim()
 }
 

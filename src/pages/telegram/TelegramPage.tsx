@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
 import { telegramApi, messagingApi, TgConversation, TgConversationDetail, TgMessage, TgBotSettings } from '../../api/client'
 import { useAppStore } from '../../store/useAppStore'
 import { T } from '../../i18n'
@@ -407,7 +407,8 @@ function Thread({ convId, t, locale, isMobile, onBack, onChanged, onDeleted }: {
   }, [messages.length])
 
   // Resize the composer whenever its text changes — typing or a loaded draft.
-  useEffect(() => { autoGrow() }, [reply, autoGrow])
+  // useLayoutEffect runs before paint, so the box never jumps a frame.
+  useLayoutEffect(() => { autoGrow() }, [reply, autoGrow])
 
   // In review mode the bot's suggested reply is loaded straight into the
   // composer for Alena to edit or send. Each draft is loaded only once, so
