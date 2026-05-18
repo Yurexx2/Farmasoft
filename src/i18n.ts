@@ -24,6 +24,7 @@ export const T = {
       sync: 'Sync', syncing: 'Syncing…',
       notConnected: 'Calendly API not connected — add the API key from the profile menu (Calendly card) to pull bookings into the schedule.',
       noEvents: 'No appointments this week',
+      comingSoon: 'Coming soon',
     },
 
     kanban: {
@@ -490,6 +491,7 @@ export const T = {
       sync: 'Синхронізувати', syncing: 'Синхронізація…',
       notConnected: 'API Calendly не підключено — додайте ключ API у меню профілю (картка Calendly), щоб бачити записи в розкладі.',
       noEvents: 'Цього тижня зустрічей немає',
+      comingSoon: 'Незабаром',
     },
 
     kanban: {

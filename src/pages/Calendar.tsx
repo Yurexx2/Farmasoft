@@ -68,7 +68,12 @@ export function CalendarPage() {
   const weekLabel = `${weekStart.toLocaleDateString(locale, { day: '2-digit', month: 'short' })} – ${addDays(weekStart, 6).toLocaleDateString(locale, { day: '2-digit', month: 'short' })}`
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
+      {/* blurred preview behind the "coming soon" overlay */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden',
+        filter: 'blur(3px)', pointerEvents: 'none', userSelect: 'none',
+      }}>
       {/* header */}
       <div style={{ padding: '20px 24px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -88,12 +93,6 @@ export function CalendarPage() {
             )}
           </div>
         </div>
-        {!connected && (
-          <div style={{
-            marginTop: 10, padding: '9px 14px', borderRadius: 9, fontSize: 12.5,
-            background: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E',
-          }}>{t.notConnected}</div>
-        )}
       </div>
 
       {/* week grid */}
@@ -162,6 +161,20 @@ export function CalendarPage() {
         {!loading && weekEvents.length === 0 && (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{t.noEvents}</div>
         )}
+      </div>
+      </div>
+
+      {/* coming-soon overlay */}
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex',
+        alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+      }}>
+        <div style={{
+          padding: '14px 32px', borderRadius: 14, fontSize: 20, fontWeight: 700,
+          color: 'var(--text-1)', background: 'var(--surface)',
+          border: '1px solid var(--border)', boxShadow: '0 14px 36px rgba(0,0,0,0.2)',
+          letterSpacing: 0.2,
+        }}>{t.comingSoon}</div>
       </div>
     </div>
   )
