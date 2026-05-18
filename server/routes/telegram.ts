@@ -69,6 +69,7 @@ router.get('/conversations', (_req: Request, res: Response) => {
       FROM tg_conversations c
       LEFT JOIN candidates cand ON cand.id = c.candidate_id
       LEFT JOIN jobs j ON j.id = c.job_id
+      WHERE c.deleted = 0
       ORDER BY c.updated_at DESC
     `).all()
     res.json({ data: rows })
@@ -158,8 +159,10 @@ router.delete('/conversations/:id', (req: Request, res: Response) => {
   try {
     const db = getDb()
     const id = parseInt(req.params.id)
+    // Soft delete — keep the row as a tombstone so the dialog import never
+    // re-creates it. It reappears only if the candidate writes again.
     db.prepare('DELETE FROM tg_messages WHERE conversation_id = ?').run(id)
-    db.prepare('DELETE FROM tg_conversations WHERE id = ?').run(id)
+    db.prepare('UPDATE tg_conversations SET deleted = 1 WHERE id = ?').run(id)
     res.json({ data: { ok: true } })
   } catch (e: unknown) {
     res.json({ error: (e as Error).message })

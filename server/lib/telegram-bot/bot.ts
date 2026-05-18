@@ -75,6 +75,7 @@ interface ConvRow {
   bot_enabled: number
   last_seen_message_id: number
   turn_count: number
+  deleted: number
 }
 
 // ─── Conversation lifecycle ──────────────────────────────────────────────────
@@ -151,9 +152,16 @@ export function handleInbound(msg: InboundTelegram): void {
         VALUES (?, ?, ?, ?, ?, 'awaiting_reply', 1)
       `).run(msg.peerId, msg.accessHash ?? null, msg.name ?? null, msg.username ?? null, msg.phone ?? null)
       conv = db.prepare('SELECT * FROM tg_conversations WHERE id = ?').get(r.lastInsertRowid) as unknown as ConvRow
-    } else if (!conv.peer_access_hash && msg.accessHash) {
-      // Backfill the access hash so the bot can reply after a restart.
-      db.prepare('UPDATE tg_conversations SET peer_access_hash = ? WHERE id = ?').run(msg.accessHash, conv.id)
+    } else {
+      // A new message resurrects a conversation Alena had deleted.
+      if (conv.deleted) {
+        db.prepare('UPDATE tg_conversations SET deleted = 0 WHERE id = ?').run(conv.id)
+        conv.deleted = 0
+      }
+      if (!conv.peer_access_hash && msg.accessHash) {
+        // Backfill the access hash so the bot can reply after a restart.
+        db.prepare('UPDATE tg_conversations SET peer_access_hash = ? WHERE id = ?').run(msg.accessHash, conv.id)
+      }
     }
 
     const stored = insertMessage(conv.id, 'in', 'candidate', msg.text, msg.messageId, 'sent')
@@ -325,7 +333,7 @@ export async function reconcileDeletions(): Promise<void> {
   if (!telegramIsConnected()) return
   const db = getDb()
   const convs = db.prepare(
-    'SELECT id, peer_id, peer_access_hash FROM tg_conversations WHERE peer_id IS NOT NULL',
+    'SELECT id, peer_id, peer_access_hash FROM tg_conversations WHERE peer_id IS NOT NULL AND deleted = 0',
   ).all() as { id: number; peer_id: string; peer_access_hash: string | null }[]
 
   for (const conv of convs) {
@@ -398,7 +406,7 @@ export async function recoverMissed(): Promise<void> {
   if (!telegramIsConnected()) return
   const db = getDb()
   const convs = db.prepare(`
-    SELECT * FROM tg_conversations WHERE status NOT IN ('closed', 'booked') AND peer_id IS NOT NULL
+    SELECT * FROM tg_conversations WHERE status NOT IN ('closed', 'booked') AND peer_id IS NOT NULL AND deleted = 0
   `).all() as unknown as ConvRow[]
 
   for (const conv of convs) {
@@ -440,7 +448,7 @@ export async function processPendingConversations(convId?: number): Promise<void
   const db = getDb()
   const convs = (convId
     ? db.prepare('SELECT * FROM tg_conversations WHERE id = ?').all(convId)
-    : db.prepare('SELECT * FROM tg_conversations').all()
+    : db.prepare('SELECT * FROM tg_conversations WHERE deleted = 0').all()
   ) as unknown as ConvRow[]
 
   for (const conv of convs) {
@@ -504,8 +512,10 @@ export async function importAllDialogs(): Promise<void> {
     for (const dlg of dialogs) {
       try {
         const existing = db.prepare(
-          'SELECT id, last_seen_message_id FROM tg_conversations WHERE peer_id = ?',
-        ).get(dlg.peerId) as { id: number; last_seen_message_id: number } | undefined
+          'SELECT id, last_seen_message_id, deleted FROM tg_conversations WHERE peer_id = ?',
+        ).get(dlg.peerId) as { id: number; last_seen_message_id: number; deleted: number } | undefined
+        // Alena deleted this conversation — never re-import it.
+        if (existing?.deleted) { dialogSync.done++; continue }
         const match = dlg.phone ? byPhone.get(normPhone(dlg.phone)) : undefined
 
         let convId: number

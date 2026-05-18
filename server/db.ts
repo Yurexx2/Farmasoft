@@ -234,6 +234,10 @@ export function getDb(): DatabaseSync {
   // Unread flag — set when a candidate message arrives, cleared when Alena
   // opens the thread.
   try { db.exec('ALTER TABLE tg_conversations ADD COLUMN unread INTEGER DEFAULT 0') } catch { /* already exists */ }
+  // Soft-delete tombstone — a conversation Alena removed. Kept (without
+  // messages) so the dialog import never resurrects it; cleared if the
+  // candidate writes again.
+  try { db.exec('ALTER TABLE tg_conversations ADD COLUMN deleted INTEGER DEFAULT 0') } catch { /* already exists */ }
 
   return db
 }
