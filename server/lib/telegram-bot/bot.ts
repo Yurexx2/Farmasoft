@@ -191,7 +191,7 @@ export async function generateDraft(convId: number): Promise<void> {
   db.prepare("UPDATE tg_messages SET status = 'discarded' WHERE conversation_id = ? AND status = 'pending_review'").run(convId)
 
   const candidate = conv.candidate_id
-    ? db.prepare('SELECT name, full_name, role FROM candidates WHERE id = ?').get(conv.candidate_id) as Record<string, unknown> | undefined
+    ? db.prepare('SELECT full_name, role FROM candidates WHERE id = ?').get(conv.candidate_id) as Record<string, unknown> | undefined
     : undefined
   const job = conv.job_id
     ? db.prepare('SELECT title FROM jobs WHERE id = ?').get(conv.job_id) as { title: string } | undefined
@@ -204,7 +204,7 @@ export async function generateDraft(convId: number): Promise<void> {
   `).all(convId) as { direction: string; sender: string; text: string }[]
 
   const system = buildSystemPrompt({
-    candidateName: (candidate?.full_name || candidate?.name || '') as string,
+    candidateName: (candidate?.full_name || '') as string,
     jobTitle: job?.title || '',
     firstMessage: history.find(h => h.direction === 'out')?.text || '',
     calendlyUrl: settings.calendlyUrl,

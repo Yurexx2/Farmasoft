@@ -61,7 +61,7 @@ router.get('/conversations', (_req: Request, res: Response) => {
       SELECT
         c.id, c.candidate_id, c.job_id, c.status, c.bot_enabled,
         c.turn_count, c.created_at, c.updated_at, c.peer_name,
-        cand.name AS candidate_name, cand.full_name AS candidate_full_name,
+        cand.full_name AS candidate_name, cand.full_name AS candidate_full_name,
         cand.role AS candidate_role, cand.photo_url AS candidate_photo,
         j.title AS job_title,
         (SELECT text FROM tg_messages m WHERE m.conversation_id = c.id AND m.status = 'sent'
@@ -106,7 +106,7 @@ router.get('/conversations/:id', (req: Request, res: Response) => {
     const db = getDb()
     const id = parseInt(req.params.id)
     const conv = db.prepare(`
-      SELECT c.*, cand.name AS candidate_name, cand.full_name AS candidate_full_name,
+      SELECT c.*, cand.full_name AS candidate_name, cand.full_name AS candidate_full_name,
              cand.role AS candidate_role, cand.phone AS candidate_phone,
              cand.photo_url AS candidate_photo, j.title AS job_title
       FROM tg_conversations c
