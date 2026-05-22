@@ -85,16 +85,17 @@ export async function syncJobToWorkua(
   return { ok: true }
 }
 
-// ─── Auto-connect from env vars on startup ──────────────────────────────────
-// If WORKUA_LOGIN + WORKUA_PASSWORD are set in the environment and no creds
-// are saved yet, write them to the settings table and cache dictionaries.
-// Lets Alena land on a pre-connected instance without touching the UI; the
-// password never lives in git — Render holds it as an env var.
+// ─── Auto-connect on startup ────────────────────────────────────────────────
+// Alena lands on a pre-connected instance. Defaults are Alena's account; env
+// vars (WORKUA_LOGIN / WORKUA_PASSWORD) override so the password can be
+// rotated via Render config without redeploying.
+const DEFAULT_WORKUA_LOGIN    = 'alena.pryhodko@farmasoft.ua'
+const DEFAULT_WORKUA_PASSWORD = '5858183'
+
 export async function bootstrapWorkuaFromEnv(): Promise<void> {
-  if (getWorkuaCreds()) return  // already connected via UI
-  const login = process.env.WORKUA_LOGIN
-  const password = process.env.WORKUA_PASSWORD
-  if (!login || !password) return
+  if (getWorkuaCreds()) return  // already connected (UI or earlier boot)
+  const login    = process.env.WORKUA_LOGIN    || DEFAULT_WORKUA_LOGIN
+  const password = process.env.WORKUA_PASSWORD || DEFAULT_WORKUA_PASSWORD
 
   const test = await workuaTest({ login, password })
   if (!test.ok) { console.error('[workua bootstrap] auth failed:', test.error); return }
