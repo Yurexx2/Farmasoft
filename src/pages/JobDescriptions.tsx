@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react'
-import { api, Job, FullSyncProgress } from '../api/client'
+import { useEffect, useState } from 'react'
+import { api, Job } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { T } from '../i18n'
 import { EMPTY_JOB } from './jobs/constants'
@@ -18,10 +18,6 @@ export function JobDescriptions() {
   const [editingJob, setEditingJob] = useState<Job | null>(null)
   const [candidateCounts, setCandidateCounts] = useState<Record<number, number>>({})
   const [publishingJob, setPublishingJob] = useState<Job | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [syncProgress, setSyncProgress] = useState<FullSyncProgress | null>(null)
-  const [syncError, setSyncError] = useState('')
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     api.jobs.withCounts().then(r => {
@@ -49,36 +45,6 @@ export function JobDescriptions() {
     if (r.data) setJobs(prev => prev.map(j => j.id === job.id ? r.data! : j))
   }
 
-  async function reloadJobs() {
-    const r = await api.jobs.withCounts()
-    if (r.data) {
-      setJobs(r.data)
-      const counts: Record<number, number> = {}
-      r.data.forEach(j => { counts[j.id] = (j as typeof j & { candidate_count: number }).candidate_count })
-      setCandidateCounts(counts)
-    }
-  }
-
-  // Auto-detect a running full sync (triggered automatically by login/startup) and show progress banner
-  useEffect(() => {
-    let active = true
-    async function poll() {
-      const s = await api.robota.fullSyncStatus()
-      if (!active || !s.data) return
-      setSyncProgress(s.data)
-      if (s.data.status === 'running') {
-        setSyncing(true)
-      } else if (syncing && (s.data.status === 'done' || s.data.status === 'error')) {
-        setSyncing(false)
-        if (s.data.status === 'error') setSyncError(s.data.error || 'Erreur de sync')
-        await reloadJobs()
-      }
-    }
-    poll()
-    pollRef.current = setInterval(poll, 2000)
-    return () => { active = false; if (pollRef.current) clearInterval(pollRef.current) }
-  }, [syncing])
-
   if (selectedJob) {
     return (
       <div className="page-pipeline">
@@ -99,37 +65,6 @@ export function JobDescriptions() {
             {tj.newJob}
           </button>
         </div>
-        {syncProgress && syncProgress.status === 'running' && (
-          <div style={{
-            marginTop: 16, padding: '12px 16px', background: '#EFF6FF',
-            border: '1px solid #BFDBFE', borderRadius: 10,
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#1D4ED8' }}>
-                {syncProgress.currentVacancy || 'Synchronisation robota.ua…'}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
-                {syncProgress.vacanciesDone} / {syncProgress.vacanciesTotal} vacancies
-              </div>
-            </div>
-            {syncProgress.vacanciesTotal > 0 && (
-              <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
-                <div style={{
-                  height: '100%', width: `${(syncProgress.vacanciesDone / syncProgress.vacanciesTotal) * 100}%`,
-                  background: '#1D4ED8', transition: 'width 300ms ease',
-                }} />
-              </div>
-            )}
-            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-              {syncProgress.candidatesImported} candidats importés · {syncProgress.candidatesOutreached} contactés
-            </div>
-          </div>
-        )}
-        {syncError && !syncing && (
-          <div style={{ marginTop: 12, padding: '8px 12px', background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626', borderRadius: 8, fontSize: 12 }}>
-            {syncError}
-          </div>
-        )}
       </div>
 
       {loading ? (
