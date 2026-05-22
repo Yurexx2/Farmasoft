@@ -152,6 +152,31 @@ export async function workuaDeleteJob(
   }
 }
 
+// ─── Employer's own vacancies ───────────────────────────────────────────────
+// GET /jobs/my returns the authenticated employer's job list. Observed shape
+// (May 2026): { status: "ok", items: [{ id: "10599" (string!), name, date,
+// date_expire, region, active: 0|1, blocked: 0|1, publication }] }.
+// There is no description/salary in the list and GET /jobs/{id} returns 501.
+export interface WorkuaMyJob {
+  id: string | number
+  name?: string
+  region?: number
+  active?: number               // 1 = published, 0 = closed/expired
+  blocked?: number
+  date?: string
+}
+
+export async function workuaListMyJobs(creds: WorkuaCreds): Promise<WorkuaMyJob[]> {
+  try {
+    const { data } = await axios.get(`${API}/jobs/my`, authConfig(creds))
+    const items = Array.isArray(data) ? data : (data?.items ?? data?.jobs ?? [])
+    return items as WorkuaMyJob[]
+  } catch (e) {
+    console.error('[workua /jobs/my]', explain(e))
+    return []
+  }
+}
+
 // ─── Responses (incoming applications) ───────────────────────────────────────
 export interface WorkuaResponse {
   id: number; job_id?: number; candidate_id?: number

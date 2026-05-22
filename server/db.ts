@@ -163,6 +163,9 @@ export function getDb(): DatabaseSync {
   // Work.ua: candidate response/candidate identifiers (whichever applies).
   try { db.exec('ALTER TABLE candidates ADD COLUMN workua_response_id INTEGER') } catch { /* already exists */ }
   try { db.exec('ALTER TABLE candidates ADD COLUMN workua_candidate_id INTEGER') } catch { /* already exists */ }
+  // Source work.ua vacancy id stamped on every imported candidate. Lets us
+  // back-fill candidates.job_id once the matching Farmasoft job is imported.
+  try { db.exec('ALTER TABLE candidates ADD COLUMN workua_source_job_id INTEGER') } catch { /* already exists */ }
   try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_workua_response
                  ON candidates(workua_response_id) WHERE workua_response_id IS NOT NULL`) } catch { /* already exists */ }
   // Hard-delete flag — a job the user removed via the trash icon. Distinct from

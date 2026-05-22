@@ -3,6 +3,7 @@ import { getDb } from '../db'
 import {
   workuaTest, workuaDictionaries, workuaAvailablePublications,
   workuaCreateJob, workuaUpdateJob, workuaCloseJob, workuaListResponses,
+  workuaListMyJobs,
   WorkuaCreds, WorkuaDicts,
 } from '../lib/workua'
 import { buildWorkuaPayload } from '../lib/workua-map'
@@ -107,10 +108,78 @@ export async function bootstrapWorkuaFromEnv(): Promise<void> {
   console.log(`[workua bootstrap] connected as ${login}`)
 }
 
+// ─── Import work.ua vacancies → Farmasoft jobs ──────────────────────────────
+// Bidirectional sync, mirrors the robota.ua side. Without this, vacancies
+// Alena published directly on work.ua never surface as Farmasoft jobs, and
+// their candidates land with job_id NULL.
+export async function importWorkuaJobs(): Promise<void> {
+  const creds = getWorkuaCreds()
+  if (!creds) return
+  const db = getDb()
+
+  const vacancies = await workuaListMyJobs(creds)
+  if (vacancies.length === 0) return
+
+  let created = 0
+  let updated = 0
+  let relinked = 0
+
+  for (const v of vacancies) {
+    try {
+      const workuaJobId = typeof v.id === 'string' ? parseInt(v.id, 10) : v.id
+      if (!workuaJobId || Number.isNaN(workuaJobId)) continue
+
+      const title    = (v.name || `Vacancy ${workuaJobId}`).trim()
+      const isActive = v.active === 1 && v.blocked !== 1 ? 1 : 0
+      const state    = v.blocked === 1 ? 'blocked' : (v.active === 1 ? 'active' : 'closed')
+
+      const existing = db.prepare('SELECT id, deleted FROM jobs WHERE workua_job_id = ?')
+        .get(workuaJobId) as { id: number; deleted: number } | undefined
+
+      // User deleted it in Farmasoft — never resurrect.
+      if (existing?.deleted === 1) continue
+
+      let farmasoftJobId: number
+      if (existing) {
+        db.prepare(`
+          UPDATE jobs SET title = ?, is_active = ?, workua_state = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(title, isActive, state, existing.id)
+        farmasoftJobId = existing.id
+        updated++
+      } else {
+        const r = db.prepare(`
+          INSERT INTO jobs (title, salary_currency, is_active, workua_job_id, workua_state)
+          VALUES (?, 'UAH', ?, ?, ?)
+        `).run(title, isActive, workuaJobId, state)
+        farmasoftJobId = r.lastInsertRowid as number
+        created++
+      }
+
+      // Back-fill any candidates that came in earlier with job_id NULL.
+      const upd = db.prepare(`
+        UPDATE candidates SET job_id = ?
+        WHERE job_id IS NULL AND workua_source_job_id = ?
+      `).run(farmasoftJobId, workuaJobId)
+      relinked += (upd.changes as number)
+    } catch (e) {
+      console.error(`[workua import job ${v.id}]`, (e as Error).message)
+    }
+  }
+
+  if (created || updated || relinked) {
+    console.log(`[workua import] ${created} created, ${updated} updated, ${relinked} candidate(s) relinked`)
+  }
+}
+
 // ─── Import responses → candidates ──────────────────────────────────────────
 export async function runFullSyncWorkua(): Promise<void> {
   const creds = getWorkuaCreds()
   if (!creds) return
+
+  // Import vacancies first so the candidate insert below can attach them.
+  await importWorkuaJobs()
+
   const db = getDb()
 
   let imported = 0
@@ -122,22 +191,35 @@ export async function runFullSyncWorkua(): Promise<void> {
 
     for (const r of items) {
       try {
-        const exists = db.prepare('SELECT id FROM candidates WHERE workua_response_id = ?').get(r.id)
-        if (exists) continue
         const job = r.job_id
           ? db.prepare('SELECT id FROM jobs WHERE workua_job_id = ?').get(r.job_id) as { id: number } | undefined
           : undefined
+
+        const exists = db.prepare('SELECT id, job_id FROM candidates WHERE workua_response_id = ?')
+          .get(r.id) as { id: number; job_id: number | null } | undefined
+        if (exists) {
+          // Older candidate inserted before workua_source_job_id existed —
+          // back-fill it now so future imports can relink without re-listing.
+          if (exists.job_id == null && (job?.id || r.job_id)) {
+            db.prepare(`
+              UPDATE candidates SET job_id = COALESCE(?, job_id), workua_source_job_id = ?
+              WHERE id = ?
+            `).run(job?.id ?? null, r.job_id ?? null, exists.id)
+          }
+          continue
+        }
         const fullName = (r.fio || '').trim()
         const initials = fullName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || '?'
         db.prepare(`
           INSERT INTO candidates (
             job_id, initials, full_name, role, source_platform, source_type,
-            email, phone, profile_url, workua_response_id, workua_candidate_id, photo_url
-          ) VALUES (?, ?, ?, ?, 'work.ua', 'scraped', ?, ?, '', ?, ?, ?)
+            email, phone, profile_url, workua_response_id, workua_candidate_id,
+            workua_source_job_id, photo_url
+          ) VALUES (?, ?, ?, ?, 'work.ua', 'scraped', ?, ?, '', ?, ?, ?, ?)
         `).run(
           job?.id ?? null, initials, fullName || null, null,
           r.email || null, r.phone || null,
-          r.id, r.candidate_id ?? null, r.photo || null,
+          r.id, r.candidate_id ?? null, r.job_id ?? null, r.photo || null,
         )
         imported++
       } catch (e) {
