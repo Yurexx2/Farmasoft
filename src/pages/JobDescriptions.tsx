@@ -37,9 +37,12 @@ export function JobDescriptions() {
     setJobs(prev => prev.filter(j => j.id !== id))
   }
 
-  // Flip a posting active ↔ inactive (also publishes/closes it on robota.ua).
+  // Flip a posting active ↔ inactive (also publishes/closes it on robota.ua
+  // and work.ua). Deactivation is destructive (it depublishes externally) so
+  // a single misclick on the badge shouldn't be enough — always ask first.
   async function toggleActive(job: Job) {
     const next = job.is_active ? 0 : 1
+    if (next === 0 && !confirm(tj.deactivateConfirm)) return
     setJobs(prev => prev.map(j => j.id === job.id ? { ...j, is_active: next } : j))
     const r = await api.jobs.update(job.id, { is_active: next })
     if (r.data) setJobs(prev => prev.map(j => j.id === job.id ? r.data! : j))
