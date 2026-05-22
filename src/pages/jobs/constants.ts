@@ -7,7 +7,11 @@ export const EMPTY_JOB: Partial<Job> = {
   city_id: 1, experience_id: 0, education_id: 0, schedule_id: 1,
   employment_types: '["FullTime"]', work_types: '["Office"]',
   branch_ids: '[]', publish_type: 'Anonym',
-  contact_person: '', contact_email: '', languages: '[]',
+  // Default contact info — Alena (HR director). The form opens already valid
+  // so a manual job can be saved without re-typing the contact every time.
+  contact_person: 'Альона Приходько',
+  contact_email: 'alena.pryhodko@farmasoft.ua',
+  languages: '[]',
 }
 
 export const EXPERIENCE_LEVELS = [

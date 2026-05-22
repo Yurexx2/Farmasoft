@@ -11,6 +11,33 @@ au contexte ukrainien : marché du travail local, plateformes Work.ua/Robota.ua,
 culture professionnelle ukrainienne.
 `
 
+// Required fields that must come back from the LLM, with a per-field validator.
+// If any is missing/empty, we retry once with a tighter prompt; if it still
+// fails, the route returns a clear error instead of a half-baked draft.
+type Gen = Record<string, unknown>
+const REQUIRED: Array<{ key: string; ok: (v: unknown, g: Gen) => boolean; why: string }> = [
+  { key: 'title',        ok: v => typeof v === 'string' && v.trim().length >= 2, why: 'title manquant' },
+  { key: 'city_id',      ok: v => typeof v === 'number' && v > 0,                 why: 'city_id manquant' },
+  { key: 'salary_min',   ok: v => typeof v === 'number' && v > 0,                 why: 'salary_min manquant' },
+  { key: 'salary_max',   ok: (v, g) => typeof v === 'number' && v >= (g.salary_min as number || 0), why: 'salary_max invalide' },
+  { key: 'experience_id', ok: v => typeof v === 'number' && v >= 0 && v <= 4,     why: 'experience_id invalide' },
+  { key: 'education_id', ok: v => typeof v === 'number' && v >= 0 && v <= 3,      why: 'education_id invalide' },
+  { key: 'schedule_id',  ok: v => typeof v === 'number' && v >= 1 && v <= 5,      why: 'schedule_id invalide' },
+  { key: 'employment_types', ok: v => Array.isArray(v) && v.length > 0,           why: 'employment_types manquant' },
+  { key: 'work_types',   ok: v => Array.isArray(v) && v.length > 0,               why: 'work_types manquant' },
+  { key: 'branch_ids',   ok: v => Array.isArray(v) && v.length > 0,               why: 'branch_ids manquant' },
+  { key: 'skills',       ok: v => Array.isArray(v) && v.length >= 3,              why: 'au moins 3 skills requis' },
+  { key: 'description',  ok: v => typeof v === 'string' && v.trim().length >= 200, why: 'description < 200 caractères' },
+  { key: 'requirements', ok: v => typeof v === 'string' && v.trim().length >= 40, why: 'requirements vide ou trop court' },
+]
+
+function validateJobDraft(g: Gen): string | null {
+  for (const f of REQUIRED) {
+    if (!f.ok(g[f.key], g)) return `${f.key}: ${f.why}`
+  }
+  return null
+}
+
 router.post('/generate-job', async (req: Request, res: Response) => {
   try {
     const { title } = req.body
@@ -31,6 +58,14 @@ CONTEXTE ENTREPRISE — ТОВ «Фармасофт» (Pharmasoft)
 LANGUE
 - Tout le contenu rédactionnel (title, skills, description, requirements) doit être
   OBLIGATOIREMENT en UKRAINIEN (мова: українська).
+
+CHECKLIST OBLIGATOIRE — CHAQUE champ ci-dessous doit avoir une valeur réelle,
+non vide, non zéro. Un seul champ manquant = échec.
+- title, salary_min > 0, salary_max ≥ salary_min, experience_id (0–4),
+  education_id (0–3), schedule_id (1–5), city_id (≥1),
+- employment_types non vide, work_types non vide, branch_ids non vide,
+- skills: au moins 3 entrées, languages: [] ou array d'objets,
+- description ≥ 200 caractères, requirements non vide (≥ 40 caractères).
 
 DESCRIPTION & REQUIREMENTS — règles strictes (anti-blabla)
 - Description: MINIMUM 200 caractères. CONCRÈTE et utilisable telle quelle.
@@ -93,8 +128,25 @@ Salaires marché Ukraine 2025 :
 - Technicien : 18 000–30 000 UAH
 - Manager : 35 000–70 000 UAH`
 
-    const text = await callLLM(prompt, { jsonMode: true, timeoutMs: 30000 })
-    const parsed = JSON.parse(text) as Record<string, unknown>
+    // First pass.
+    let parsed: Gen
+    try {
+      parsed = JSON.parse(await callLLM(prompt, { jsonMode: true, timeoutMs: 30000 })) as Gen
+    } catch {
+      return res.json({ error: 'Réponse IA invalide (JSON). Réessayez.' })
+    }
+    // If anything is missing, retry once with the exact error fed back to the LLM.
+    let problem = validateJobDraft(parsed)
+    if (problem) {
+      const retryPrompt = `${prompt}\n\nTa précédente réponse a été REJETÉE car : ${problem}.\nRégénère la fiche complète, sans rien laisser vide ni à zéro, en respectant strictement la CHECKLIST OBLIGATOIRE.`
+      try {
+        parsed = JSON.parse(await callLLM(retryPrompt, { jsonMode: true, timeoutMs: 30000 })) as Gen
+      } catch {
+        return res.json({ error: 'Réponse IA invalide à la 2e tentative.' })
+      }
+      problem = validateJobDraft(parsed)
+      if (problem) return res.json({ error: `IA incomplète après retry : ${problem}. Réessayez.` })
+    }
     // Server-side defaults the LLM doesn't need to invent.
     parsed.contact_person = 'Альона Приходько'
     parsed.contact_email = 'alena.pryhodko@farmasoft.ua'
