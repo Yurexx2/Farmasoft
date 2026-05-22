@@ -47,6 +47,11 @@ router.post('/generate-job', async (req: Request, res: Response) => {
 
 Tu génères une fiche de poste PRÊTE À PUBLIER sur robota.ua pour : "${title}"
 
+RÈGLE INTANGIBLE — Le titre du poste reste EXACTEMENT "${title}", sans
+reformulation, sans synonyme, sans "normalisation". Tout le contenu (skills,
+description, requirements, branch_ids) doit décrire CE poste précis, pas un
+poste voisin.
+
 CONTEXTE ENTREPRISE — ТОВ «Фармасофт» (Pharmasoft)
 - Logistique pharmaceutique en Ukraine, 25 ans sur le marché pharma, 50–250 employés.
 - Localisation: вул. Бориспільська 9, с. Велика Олександрівка, Бориспільський р-н.
@@ -147,7 +152,10 @@ Salaires marché Ukraine 2025 :
       problem = validateJobDraft(parsed)
       if (problem) return res.json({ error: `IA incomplète après retry : ${problem}. Réessayez.` })
     }
-    // Server-side defaults the LLM doesn't need to invent.
+    // Server-side enforcement: the user's title is what they want. The LLM
+    // sometimes paraphrases it ("Водій-експедитор" → "Логіст"); we override
+    // back to the exact input. Contacts + publish type are fixed defaults.
+    parsed.title = String(title).trim()
     parsed.contact_person = 'Альона Приходько'
     parsed.contact_email = 'alena.pryhodko@farmasoft.ua'
     parsed.publish_type = (parsed.publish_type as string) || 'Anonym'
