@@ -223,22 +223,26 @@ export function JobDescriptions() {
                 )}
 
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div className="flex items-center gap-8">
+                  <div className="flex items-center gap-6">
                     <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
                       {tj.candidates(count)}
                     </span>
-                    <PlatformDot
-                      label="R"
-                      published={!!job.robota_vacancy_id}
-                      error={job.robota_error || undefined}
-                      title={job.robota_vacancy_id ? `robota.ua · ID ${job.robota_vacancy_id}` : 'robota.ua — non publié'}
-                    />
-                    <PlatformDot
-                      label="W"
-                      published={!!job.workua_job_id}
-                      error={job.workua_error || undefined}
-                      title={job.workua_job_id ? `work.ua · ID ${job.workua_job_id}` : 'work.ua — non publié'}
-                    />
+                    {job.robota_vacancy_id ? (
+                      <PlatformChip
+                        label="robota.ua"
+                        color="#1A4A8A"
+                        error={job.robota_error || undefined}
+                        title={`robota.ua · ID ${job.robota_vacancy_id}`}
+                      />
+                    ) : null}
+                    {job.workua_job_id ? (
+                      <PlatformChip
+                        label="work.ua"
+                        color="#1A6B3C"
+                        error={job.workua_error || undefined}
+                        title={`work.ua · ID ${job.workua_job_id}`}
+                      />
+                    ) : null}
                   </div>
                   <span
                     onClick={e => { e.stopPropagation(); toggleActive(job) }}
@@ -285,18 +289,19 @@ export function JobDescriptions() {
   )
 }
 
-function PlatformDot({ label, published, error, title }: {
-  label: string; published: boolean; error?: string; title: string
+function PlatformChip({ label, color, error, title }: {
+  label: string; color: string; error?: string; title: string
 }) {
-  const color = error ? '#DC2626' : published ? '#15803D' : 'var(--text-3)'
-  const bg    = error ? '#FEE2E2' : published ? '#DCFCE7' : 'var(--surface-2)'
+  const fg = error ? '#B91C1C' : color
+  const bg = error ? '#FEE2E2' : `${color}14`
   return (
     <span
-      title={error ? `${title}\n${error}` : title}
+      title={error ? `${title}\n⚠ ${error}` : title}
       style={{
-        fontSize: 9, fontWeight: 700, width: 16, height: 16, borderRadius: '50%',
-        background: bg, color, display: 'inline-flex', alignItems: 'center',
-        justifyContent: 'center', letterSpacing: 0, lineHeight: 1,
+        fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
+        background: bg, color: fg, display: 'inline-flex', alignItems: 'center',
+        lineHeight: 1.2, textTransform: 'lowercase', letterSpacing: 0.2,
+        border: error ? '1px solid #FCA5A5' : '1px solid transparent',
       }}
     >{label}</span>
   )
