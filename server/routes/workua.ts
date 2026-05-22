@@ -1,96 +1,176 @@
 import { Router, Request, Response } from 'express'
-import {
-  workuaStartLogin, workuaFlowState, workuaCheckSession, workuaHasProfile,
-  workuaClearProfile, workuaScrapeVacancies, workuaInspect, WorkuaVacancy,
-} from '../lib/workua/browser'
 import { getDb } from '../db'
+import {
+  workuaTest, workuaDictionaries, workuaAvailablePublications,
+  workuaCreateJob, workuaUpdateJob, workuaCloseJob, workuaListResponses,
+  WorkuaCreds, WorkuaDicts,
+} from '../lib/workua'
+import { buildWorkuaPayload } from '../lib/workua-map'
 
 const router = Router()
 
-function saveSetting(key: string, value: string) {
+// ─── Settings helpers ───────────────────────────────────────────────────────
+function getSetting(key: string): string | null {
+  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined
+  return row?.value ?? null
+}
+function setSetting(key: string, value: string): void {
   getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
 }
-function getSetting(key: string): string {
-  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined
-  return row?.value || ''
+
+export function getWorkuaCreds(): WorkuaCreds | null {
+  const login = getSetting('workua_login')
+  const password = getSetting('workua_password')
+  return login && password ? { login, password } : null
 }
 
-// ─── Background operation result store ───────────────────────────────────────
-let lastVacancies: WorkuaVacancy[] = []
-let lastInspect: unknown = null
+function getCachedDicts(): WorkuaDicts | null {
+  const raw = getSetting('workua_dictionaries')
+  if (!raw) return null
+  try { return JSON.parse(raw) as WorkuaDicts } catch { return null }
+}
 
-// ─── GET /workua/status ──────────────────────────────────────────────────────
-router.get('/status', async (_req: Request, res: Response) => {
-  try {
-    if (!workuaHasProfile()) return res.json({ data: { connected: false } })
-    const check = await workuaCheckSession()
-    res.json({ data: check })
-  } catch (e: unknown) {
-    res.json({ error: (e as Error).message })
+// Pick the cheapest available publication type with at least one in stock.
+function pickPublicationType(pubs: { id: string; total: number }[]): string | null {
+  const stocked = pubs.filter(p => p.total > 0)
+  if (stocked.length === 0) return null
+  // Prefer something that looks free / "standart" if present.
+  const cheap = stocked.find(p => /standart|free/i.test(p.id))
+  return (cheap || stocked[0]).id
+}
+
+// ─── Sync one Farmasoft job to work.ua (publish | update | close) ───────────
+export async function syncJobToWorkua(
+  jobId: number, action: 'publish' | 'update' | 'close',
+): Promise<{ ok: boolean; error?: string }> {
+  const creds = getWorkuaCreds()
+  if (!creds) return { ok: false, error: 'Work.ua non connecté' }
+  const db = getDb()
+  const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId) as Record<string, unknown> | undefined
+  if (!job) return { ok: false, error: 'Job introuvable' }
+
+  const dicts = getCachedDicts()
+  if (!dicts) return { ok: false, error: 'Dictionnaires work.ua non chargés' }
+
+  const workuaJobId = job.workua_job_id as number | null
+
+  if (action === 'close') {
+    if (!workuaJobId) return { ok: true }   // never published — nothing to close
+    const r = await workuaCloseJob(creds, workuaJobId)
+    if (r.ok) db.prepare("UPDATE jobs SET workua_state = 'closed', workua_error = NULL WHERE id = ?").run(jobId)
+    else      db.prepare('UPDATE jobs SET workua_error = ? WHERE id = ?').run(r.error || null, jobId)
+    return r
   }
-})
 
-// ─── GET /workua/flow-state — poll any in-progress login/sync ────────────────
-router.get('/flow-state', (_req: Request, res: Response) => {
-  res.json({ data: workuaFlowState() })
-})
+  // publish or update — need the payload and a publication type
+  const pubs = await workuaAvailablePublications(creds)
+  const pubType = pickPublicationType(pubs)
+  const { payload } = buildWorkuaPayload(job as never, dicts, pubType)
 
-// ─── POST /workua/login — open Chromium, auto-fill, human solves reCAPTCHA ───
-router.post('/login', (req: Request, res: Response) => {
-  const { email, password } = req.body as { email?: string; password?: string }
-  const useEmail = email || getSetting('workua_email')
-  const usePass  = password || getSetting('workua_password')
-  if (email && password) {
-    saveSetting('workua_email', email)
-    saveSetting('workua_password', password)
+  if (workuaJobId && action === 'update') {
+    const r = await workuaUpdateJob(creds, workuaJobId, payload)
+    if (r.ok) db.prepare("UPDATE jobs SET workua_state = 'active', workua_error = NULL WHERE id = ?").run(jobId)
+    else      db.prepare('UPDATE jobs SET workua_error = ? WHERE id = ?').run(r.error || null, jobId)
+    return r
   }
-  const r = workuaStartLogin(useEmail || undefined, usePass || undefined)
-  if (!r.ok) return res.json({ error: r.error })
-  res.json({ data: { started: true } })
-})
 
-// ─── POST /workua/sync — scrape employer vacancies (semi-manual) ─────────────
-// Non-blocking: starts the scrape; the recruiter solves Cloudflare if prompted.
-// Poll /flow-state for progress, then GET /sync-result for the data.
-router.post('/sync', (_req: Request, res: Response) => {
-  const state = workuaFlowState().state
-  if (state === 'working' || state === 'awaiting_human') {
-    return res.json({ error: 'Opération work.ua déjà en cours' })
+  // create or re-publish
+  const created = await workuaCreateJob(creds, payload)
+  if (!created.ok) {
+    db.prepare('UPDATE jobs SET workua_error = ? WHERE id = ?').run(created.error, jobId)
+    return { ok: false, error: created.error }
   }
-  void (async () => {
-    try {
-      lastVacancies = await workuaScrapeVacancies()
-    } catch { /* flow state already reflects the failure */ }
-  })()
-  res.json({ data: { started: true } })
+  db.prepare("UPDATE jobs SET workua_job_id = ?, workua_state = 'active', workua_error = NULL WHERE id = ?")
+    .run(created.jobId ?? null, jobId)
+  return { ok: true }
+}
+
+// ─── Import responses → candidates ──────────────────────────────────────────
+export async function runFullSyncWorkua(): Promise<void> {
+  const creds = getWorkuaCreds()
+  if (!creds) return
+  const db = getDb()
+
+  let imported = 0
+  let lastId: number | undefined
+  for (let page = 0; page < 20; page++) {
+    const { items, error } = await workuaListResponses(creds, { limit: 50, lastId })
+    if (error) { console.error('[workua sync]', error); return }
+    if (items.length === 0) break
+
+    for (const r of items) {
+      try {
+        const exists = db.prepare('SELECT id FROM candidates WHERE workua_response_id = ?').get(r.id)
+        if (exists) continue
+        const job = r.job_id
+          ? db.prepare('SELECT id FROM jobs WHERE workua_job_id = ?').get(r.job_id) as { id: number } | undefined
+          : undefined
+        const fullName = (r.fio || '').trim()
+        const initials = fullName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || '?'
+        db.prepare(`
+          INSERT INTO candidates (
+            job_id, initials, full_name, role, source_platform, source_type,
+            email, phone, profile_url, workua_response_id, workua_candidate_id, photo_url
+          ) VALUES (?, ?, ?, ?, 'work.ua', 'scraped', ?, ?, '', ?, ?, ?)
+        `).run(
+          job?.id ?? null, initials, fullName || null, null,
+          r.email || null, r.phone || null,
+          r.id, r.candidate_id ?? null, r.photo || null,
+        )
+        imported++
+      } catch (e) {
+        console.error('[workua candidate insert]', (e as Error).message)
+      }
+    }
+    lastId = items[items.length - 1].id
+    if (items.length < 50) break
+  }
+  if (imported > 0) console.log(`[workua sync] ${imported} new candidate(s) imported`)
+}
+
+// ─── Routes ─────────────────────────────────────────────────────────────────
+router.get('/config', async (_req: Request, res: Response) => {
+  const creds = getWorkuaCreds()
+  if (!creds) return res.json({ data: { connected: false } })
+  const pubs = await workuaAvailablePublications(creds)
+  res.json({ data: { connected: true, login: creds.login, publications: pubs } })
 })
 
-router.get('/sync-result', (_req: Request, res: Response) => {
-  res.json({ data: { vacancies: lastVacancies } })
-})
-
-// ─── POST /workua/disconnect ─────────────────────────────────────────────────
-router.post('/disconnect', (_req: Request, res: Response) => {
-  workuaClearProfile()
+router.post('/auth', async (req: Request, res: Response) => {
+  const { login, password } = req.body as { login: string; password: string }
+  if (!login || !password) return res.json({ error: 'Login et mot de passe requis' })
+  const test = await workuaTest({ login, password })
+  if (!test.ok) return res.json({ error: test.error })
+  setSetting('workua_login', login)
+  setSetting('workua_password', password)
+  // Cache dictionaries on connect.
+  const dicts = await workuaDictionaries({ login, password })
+  if (dicts) setSetting('workua_dictionaries', JSON.stringify(dicts))
+  // Pull existing responses in the background.
+  runFullSyncWorkua().catch(e => console.error('[workua initial sync]', (e as Error).message))
   res.json({ data: { ok: true } })
 })
 
-// ─── Inspection endpoints (selector tuning) ──────────────────────────────────
-router.post('/inspect', (req: Request, res: Response) => {
-  const url = (req.body?.url as string) || 'https://www.work.ua/employer/my/jobs/'
-  const state = workuaFlowState().state
-  if (state === 'working' || state === 'awaiting_human') {
-    return res.json({ error: 'Opération work.ua déjà en cours' })
+router.post('/disconnect', (_req: Request, res: Response) => {
+  const db = getDb()
+  for (const k of ['workua_login', 'workua_password', 'workua_dictionaries']) {
+    db.prepare('DELETE FROM settings WHERE key = ?').run(k)
   }
-  void (async () => {
-    try { lastInspect = await workuaInspect(url) }
-    catch (e) { lastInspect = { error: (e as Error).message } }
-  })()
+  res.json({ data: { ok: true } })
+})
+
+router.post('/full-sync', async (_req: Request, res: Response) => {
+  runFullSyncWorkua().catch(e => console.error('[workua full-sync]', (e as Error).message))
   res.json({ data: { started: true } })
 })
 
-router.get('/inspect-result', (_req: Request, res: Response) => {
-  res.json({ data: lastInspect })
+router.post('/refresh-dictionaries', async (_req: Request, res: Response) => {
+  const creds = getWorkuaCreds()
+  if (!creds) return res.json({ error: 'Work.ua non connecté' })
+  const dicts = await workuaDictionaries(creds)
+  if (!dicts) return res.json({ error: 'Impossible de récupérer les dictionnaires' })
+  setSetting('workua_dictionaries', JSON.stringify(dicts))
+  res.json({ data: { ok: true } })
 })
 
 export default router

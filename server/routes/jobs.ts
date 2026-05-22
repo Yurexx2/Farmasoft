@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { getDb } from '../db'
 import { syncJobToRobota } from './robota'
+import { syncJobToWorkua, getWorkuaCreds } from './workua'
 
 const router = Router()
 
@@ -73,14 +74,16 @@ router.post('/', async (req: Request, res: Response) => {
 
     const result = db.prepare(`INSERT INTO jobs (${cols.join(', ')}) VALUES (${placeholders})`).run(...Object.values(data) as never[])
 
-    // If is_active was set, push to robota.ua
+    // If is_active was set, push to robota.ua and work.ua in parallel.
     const wantsActive = data.is_active == 1 || data.is_active === '1' || data.is_active === true
     if (wantsActive) {
-      const syncResult = await syncJobToRobota(result.lastInsertRowid as number, 'publish')
-      if (syncResult.error) {
-        // Save error but don't fail the whole request
-        db.prepare('UPDATE jobs SET robota_error = ? WHERE id = ?').run(syncResult.error, result.lastInsertRowid)
-      }
+      const newId = result.lastInsertRowid as number
+      await Promise.all([
+        syncJobToRobota(newId, 'publish').then(r => {
+          if (r.error) db.prepare('UPDATE jobs SET robota_error = ? WHERE id = ?').run(r.error, newId)
+        }),
+        getWorkuaCreds() ? syncJobToWorkua(newId, 'publish') : Promise.resolve({ ok: true }),
+      ])
     }
 
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(result.lastInsertRowid)
@@ -95,7 +98,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     const db = getDb()
     const { id } = req.params
 
-    const before = db.prepare('SELECT is_active, robota_vacancy_id FROM jobs WHERE id = ?').get(id) as { is_active: number; robota_vacancy_id: number | null } | undefined
+    const before = db.prepare('SELECT is_active, robota_vacancy_id, workua_job_id FROM jobs WHERE id = ?').get(id) as { is_active: number; robota_vacancy_id: number | null; workua_job_id: number | null } | undefined
     if (!before) return res.json({ error: 'Poste introuvable' })
 
     const data = normalize(req.body)
@@ -113,29 +116,36 @@ router.put('/:id', async (req: Request, res: Response) => {
       : (data.is_active == 1 || data.is_active === '1' || data.is_active === true)
     const wasActive = before.is_active === 1
 
+    // Pick the action for each platform based on the active-state transition.
+    let action: 'publish' | 'update' | 'close' | null = null
+    if (wantsActive && !wasActive) action = 'publish'
+    else if (!wantsActive && wasActive) action = 'close'
+    else if (wantsActive && wasActive)  action = 'update'
+
     let robotaResult: { ok: boolean; error?: string } = { ok: true }
-    if (wantsActive && !wasActive) {
-      // Was inactive → now active → publish
-      const r = await syncJobToRobota(parseInt(id), 'publish')
-      robotaResult = r.error ? { ok: false, error: r.error } : { ok: true }
-    } else if (!wantsActive && wasActive && before.robota_vacancy_id) {
-      // Was active → now inactive → close on robota.ua
-      const r = await syncJobToRobota(parseInt(id), 'close')
-      robotaResult = r.error ? { ok: false, error: r.error } : { ok: true }
-    } else if (wantsActive && wasActive && before.robota_vacancy_id) {
-      // Stays active but content may have changed → push update
-      const r = await syncJobToRobota(parseInt(id), 'update')
-      robotaResult = r.error ? { ok: false, error: r.error } : { ok: true }
+    let workuaResult: { ok: boolean; error?: string } = { ok: true }
+
+    if (action) {
+      const jobIdN = parseInt(id)
+      const workConnected = !!getWorkuaCreds()
+      const robotaSkip = (action === 'close' || action === 'update') && !before.robota_vacancy_id
+      const workuaSkip = (action === 'close' || action === 'update') && !before.workua_job_id
+
+      ;[robotaResult, workuaResult] = await Promise.all([
+        robotaSkip ? Promise.resolve({ ok: true })
+                   : syncJobToRobota(jobIdN, action).then(r => r.error ? { ok: false, error: r.error } : { ok: true }),
+        !workConnected || workuaSkip ? Promise.resolve({ ok: true })
+                                     : syncJobToWorkua(jobIdN, action).then(r => r.error ? { ok: false, error: r.error } : { ok: true }),
+      ])
     }
 
-    if (!robotaResult.ok) {
-      db.prepare('UPDATE jobs SET robota_error = ? WHERE id = ?').run(robotaResult.error || null, id)
-    } else {
-      db.prepare('UPDATE jobs SET robota_error = NULL WHERE id = ?').run(id)
-    }
+    if (!robotaResult.ok) db.prepare('UPDATE jobs SET robota_error = ? WHERE id = ?').run(robotaResult.error || null, id)
+    else                  db.prepare('UPDATE jobs SET robota_error = NULL WHERE id = ?').run(id)
+    if (!workuaResult.ok) db.prepare('UPDATE jobs SET workua_error = ? WHERE id = ?').run(workuaResult.error || null, id)
+    else                  db.prepare('UPDATE jobs SET workua_error = NULL WHERE id = ?').run(id)
 
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id)
-    res.json({ data: job, robotaError: robotaResult.error })
+    res.json({ data: job, robotaError: robotaResult.error, workuaError: workuaResult.error })
   } catch (err: unknown) {
     res.json({ error: (err as Error).message })
   }
@@ -145,12 +155,13 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const db = getDb()
     const { id } = req.params
-    const job = db.prepare('SELECT robota_vacancy_id FROM jobs WHERE id = ?').get(id) as { robota_vacancy_id: number | null } | undefined
+    const job = db.prepare('SELECT robota_vacancy_id, workua_job_id FROM jobs WHERE id = ?').get(id) as { robota_vacancy_id: number | null; workua_job_id: number | null } | undefined
 
-    if (job?.robota_vacancy_id) {
-      // Close on robota.ua too
-      await syncJobToRobota(parseInt(id), 'close').catch(() => null)
-    }
+    // Close on both external platforms (best-effort).
+    await Promise.all([
+      job?.robota_vacancy_id ? syncJobToRobota(parseInt(id), 'close').catch(() => null) : Promise.resolve(),
+      job?.workua_job_id && getWorkuaCreds() ? syncJobToWorkua(parseInt(id), 'close').catch(() => null) : Promise.resolve(),
+    ])
 
     // Hard delete — mark deleted=1 so list queries exclude it permanently and
     // the robota sync never resurrects it (a plain is_active=0 reappeared on

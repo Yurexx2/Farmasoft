@@ -223,9 +223,23 @@ export function JobDescriptions() {
                 )}
 
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                    {tj.candidates(count)}
-                  </span>
+                  <div className="flex items-center gap-8">
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                      {tj.candidates(count)}
+                    </span>
+                    <PlatformDot
+                      label="R"
+                      published={!!job.robota_vacancy_id}
+                      error={job.robota_error || undefined}
+                      title={job.robota_vacancy_id ? `robota.ua · ID ${job.robota_vacancy_id}` : 'robota.ua — non publié'}
+                    />
+                    <PlatformDot
+                      label="W"
+                      published={!!job.workua_job_id}
+                      error={job.workua_error || undefined}
+                      title={job.workua_job_id ? `work.ua · ID ${job.workua_job_id}` : 'work.ua — non publié'}
+                    />
+                  </div>
                   <span
                     onClick={e => { e.stopPropagation(); toggleActive(job) }}
                     style={{
@@ -236,9 +250,10 @@ export function JobDescriptions() {
                       textTransform: 'uppercase', letterSpacing: 0.4, cursor: 'pointer',
                       userSelect: 'none',
                     }}
-                    title={job.robota_error
-                      ? `Erreur robota.ua : ${job.robota_error}`
-                      : tj.toggleStatus}
+                    title={[
+                      job.robota_error && `Erreur robota.ua : ${job.robota_error}`,
+                      job.workua_error && `Erreur work.ua : ${job.workua_error}`,
+                    ].filter(Boolean).join('\n') || tj.toggleStatus}
                   >
                     {job.is_active ? tj.active : tj.inactive}
                   </span>
@@ -267,5 +282,22 @@ export function JobDescriptions() {
         />
       )}
     </div>
+  )
+}
+
+function PlatformDot({ label, published, error, title }: {
+  label: string; published: boolean; error?: string; title: string
+}) {
+  const color = error ? '#DC2626' : published ? '#15803D' : 'var(--text-3)'
+  const bg    = error ? '#FEE2E2' : published ? '#DCFCE7' : 'var(--surface-2)'
+  return (
+    <span
+      title={error ? `${title}\n${error}` : title}
+      style={{
+        fontSize: 9, fontWeight: 700, width: 16, height: 16, borderRadius: '50%',
+        background: bg, color, display: 'inline-flex', alignItems: 'center',
+        justifyContent: 'center', letterSpacing: 0, lineHeight: 1,
+      }}
+    >{label}</span>
   )
 }

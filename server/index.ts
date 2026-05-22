@@ -20,11 +20,10 @@ import adminRouter from './routes/admin'
 import telegramBotRouter from './routes/telegram'
 import calendarRouter, { syncCalendly } from './routes/calendar'
 import { stripHtml } from './lib/text'
-// work.ua integration disabled — their employer dashboard sits behind a
-// Cloudflare bot-management challenge with no interactive element, which
-// blocks any automated browser. Source kept dormant in routes/workua.ts +
-// lib/workua/ in case work.ua ever drops the protection.
-// import workuaRouter from './routes/workua'
+// Work.ua — public REST API (Basic Auth). The old Playwright scraper at
+// lib/workua/browser.ts is dormant; the live integration uses the official
+// API via lib/workua.ts.
+import workuaRouter, { runFullSyncWorkua } from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
 import { telegramIsConnected, onTelegramInbound, onTelegramDeleted } from './lib/messaging/telegram'
 import { handleInbound, handleDeleted, recoverMissed, importAllDialogs, reconcileDeletions } from './lib/telegram-bot/bot'
@@ -70,6 +69,7 @@ api.use('/salary', salaryRouter)
 api.use('/admin', adminRouter)
 api.use('/telegram', telegramBotRouter)
 api.use('/calendar', calendarRouter)
+api.use('/workua', workuaRouter)
 // api.use('/workua', workuaRouter)  // disabled — see import note above
 app.use(`${PREFIX}/api`, api)
 
@@ -148,6 +148,9 @@ app.listen(PORT, () => {
   // Pull Calendly bookings into the interviews table on boot.
   syncCalendly().catch(e => console.error('[startup calendly]', (e as Error).message))
 
+  // Pull existing work.ua responses on boot (only if connected).
+  runFullSyncWorkua().catch(e => console.error('[startup workua]', (e as Error).message))
+
   // Route every inbound Telegram private message into the recruiting bot,
   // and mirror message deletions made in the Telegram app.
   onTelegramInbound(handleInbound)
@@ -190,6 +193,15 @@ function startCron() {
       console.error('[cron] Calendly sync error:', (e as Error).message)
     }
   }, 10 * 60 * 1000)
+
+  // Work.ua responses → candidates, every 15 min.
+  setInterval(async () => {
+    try {
+      await runFullSyncWorkua()
+    } catch (e) {
+      console.error('[cron] Work.ua sync error:', (e as Error).message)
+    }
+  }, 15 * 60 * 1000)
 
   // Follow-up check every 6 hours
   setInterval(async () => {

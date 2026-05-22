@@ -222,6 +222,23 @@ export const messagingApi = {
     req<Array<{ channel: string; ok: boolean; id?: string; error?: string }>>(`/messaging/send/${candidateId}`, { method: 'POST', ...body(params) }),
 }
 
+// ─── Work.ua ─────────────────────────────────────────────────────────────
+export interface WorkuaConfig {
+  connected: boolean
+  login?: string
+  publications?: Array<{ id: string; total: number }>
+}
+
+export const workuaApi = {
+  config: () => req<WorkuaConfig>('/workua/config'),
+  auth: (login: string, password: string) =>
+    req<{ ok: boolean }>('/workua/auth', { method: 'POST', ...body({ login, password }) }),
+  disconnect: () => req<{ ok: boolean }>('/workua/disconnect', { method: 'POST' }),
+  fullSync: () => req<{ started: boolean }>('/workua/full-sync', { method: 'POST' }),
+  refreshDictionaries: () =>
+    req<{ ok: boolean }>('/workua/refresh-dictionaries', { method: 'POST' }),
+}
+
 // ─── Calendar / Calendly ─────────────────────────────────────────────────
 export const calendarApi = {
   status: () => req<{ connected: boolean; calendlyUrl: string }>('/calendar/status'),
@@ -360,6 +377,9 @@ export interface Job {
   languages?: string
   robota_state?: string | null
   robota_error?: string | null
+  workua_job_id?: number | null
+  workua_state?: string | null
+  workua_error?: string | null
 }
 
 export interface Candidate {

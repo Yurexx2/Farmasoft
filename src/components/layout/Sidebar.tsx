@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore, Page } from '../../store/useAppStore'
 import { T } from '../../i18n'
-import { api, RobotaConfig, messagingApi, MessagingStatus, calendarApi } from '../../api/client'
+import { api, RobotaConfig, messagingApi, MessagingStatus, calendarApi, workuaApi, WorkuaConfig } from '../../api/client'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 interface NavItem { id: Page; label: string; icon: JSX.Element }
@@ -51,13 +51,15 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
   const { uiLang } = useAppStore()
   const tc = T[uiLang].connections
   const [robotaConfig, setRobotaConfig] = useState<RobotaConfig | null>(null)
+  const [workuaConfig, setWorkuaConfig] = useState<WorkuaConfig | null>(null)
   const [channelStatus, setChannelStatus] = useState<MessagingStatus | null>(null)
-  const [activeChannel, setActiveChannel] = useState<'robota' | 'telegram' | 'calendly' | 'email' | null>(null)
+  const [activeChannel, setActiveChannel] = useState<'robota' | 'workua' | 'telegram' | 'calendly' | 'email' | null>(null)
 
   async function refresh() {
-    const [r1, r2] = await Promise.all([api.robota.config(), messagingApi.status()])
+    const [r1, r2, r3] = await Promise.all([api.robota.config(), messagingApi.status(), workuaApi.config()])
     if (r1.data) setRobotaConfig(r1.data)
     if (r2.data) setChannelStatus(r2.data)
+    if (r3.data) setWorkuaConfig(r3.data)
   }
 
   useEffect(() => { if (open) refresh() }, [open])
@@ -111,6 +113,19 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
             onDisconnect={async () => {
               if (!confirm(tc.confirmRobota)) return
               await api.robota.disconnect()
+              await refresh()
+            }}
+          />
+          <Card
+            icon={iconWorkua} brandColor="#1A6B3C"
+            name="Work.ua"
+            subtitle={tc.workuaSubtitle}
+            status={workuaConfig?.connected ? 'connected' : 'disconnected'}
+            identity={workuaConfig?.login || undefined}
+            onConnect={() => setActiveChannel('workua')}
+            onDisconnect={async () => {
+              if (!confirm(tc.confirmWorkua)) return
+              await workuaApi.disconnect()
               await refresh()
             }}
           />
@@ -168,6 +183,7 @@ function ProfileMenu({ open, onClose }: { open: boolean; onClose: () => void }) 
       </div>
 
       {activeChannel === 'robota'   && <RobotaConnectModal   onClose={() => { setActiveChannel(null); refresh() }} />}
+      {activeChannel === 'workua'   && <WorkuaConnectModal   onClose={() => { setActiveChannel(null); refresh() }} />}
       {activeChannel === 'telegram' && <TelegramConnectModal onClose={() => { setActiveChannel(null); refresh() }} />}
       {activeChannel === 'calendly' && <CalendlyConnectModal initial={robotaConfig?.calendly_url || ''} onClose={() => { setActiveChannel(null); refresh() }} />}
       {activeChannel === 'email'    && <EmailConnectModal    onClose={() => { setActiveChannel(null); refresh() }} />}
@@ -180,6 +196,13 @@ const iconRobota = (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="7" width="18" height="13" rx="2" />
     <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+)
+const iconWorkua = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="7" width="18" height="13" rx="2" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M8 12l1.5 4 2.5-3 2.5 3L16 12" fill="none" />
   </svg>
 )
 const iconTelegram = (
@@ -369,6 +392,39 @@ function RobotaConnectModal({ onClose }: { onClose: () => void }) {
       <div className="flex gap-8 justify-end mt-16">
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary btn-sm" onClick={connect} disabled={loading || !email || !password}>
+          {loading ? 'Connecting…' : 'Connect'}
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+
+function WorkuaConnectModal({ onClose }: { onClose: () => void }) {
+  const [login, setLogin] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function connect() {
+    if (!login || !password) return
+    setLoading(true); setError('')
+    const r = await workuaApi.auth(login, password)
+    setLoading(false)
+    if (r.error) setError(r.error)
+    else onClose()
+  }
+
+  return (
+    <ModalShell title="Connect Work.ua" onClose={onClose}>
+      <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 14 }}>
+        Employer account credentials for work.ua. The login is the email registered on the Work.ua employer portal.
+      </p>
+      <Field label="Login" value={login} onChange={setLogin} placeholder="alena.pryhodko@farmasoft.ua" type="email" />
+      <Field label="Password" value={password} onChange={setPassword} placeholder="••••••••" type="password" />
+      {error && <p style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{error}</p>}
+      <div className="flex gap-8 justify-end mt-16">
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary btn-sm" onClick={connect} disabled={loading || !login || !password}>
           {loading ? 'Connecting…' : 'Connect'}
         </button>
       </div>
