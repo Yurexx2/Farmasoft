@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, Candidate, KPIs, Interview, SalaryJobSummary } from '../api/client'
+import { api, KPIs, Interview, SourceStat, RejectionStat } from '../api/client'
 import { useAppStore } from '../store/useAppStore'
 import { T } from '../i18n'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -22,14 +22,51 @@ function KpiCard({ value, label, sub, subColor }: {
         {value}
       </div>
       <div style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 500, marginBottom: 12 }}>{label}</div>
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
-        borderRadius: 20, fontSize: 11, fontWeight: 500,
-        background: subColor ? subColor + '14' : 'var(--surface-2)',
-        color: subColor || 'var(--text-3)',
-      }}>
-        {sub}
+      {sub && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
+          borderRadius: 20, fontSize: 11, fontWeight: 500,
+          background: subColor ? subColor + '14' : 'var(--surface-2)',
+          color: subColor || 'var(--text-3)',
+        }}>{sub}</div>
+      )}
+    </div>
+  )
+}
+
+// Horizontal-bar list used for "Candidate sources" and "Rejection reasons".
+function StatList({ title, items, empty, accent }: {
+  title: string
+  items: { label: string; count: number; percent?: number }[]
+  empty: string
+  accent: string
+}) {
+  const max = items.reduce((m, it) => Math.max(m, it.count), 0) || 1
+  return (
+    <div style={{ background: 'var(--surface)', borderRadius: 16, padding: '22px 24px', boxShadow: 'var(--shadow)' }}>
+      <div style={{ fontWeight: 600, fontSize: 14, paddingBottom: 14, borderBottom: '1px solid var(--border)', marginBottom: 14 }}>
+        {title}
       </div>
+      {items.length === 0 ? (
+        <div style={{ padding: '8px 0', color: 'var(--text-3)', fontSize: 12, textAlign: 'center' }}>{empty}</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {items.map((it, i) => (
+            <div key={i}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{it.label}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                  <strong style={{ color: 'var(--text-2)' }}>{it.count}</strong>
+                  {it.percent != null && ` · ${it.percent}%`}
+                </span>
+              </div>
+              <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ width: `${(it.count / max) * 100}%`, height: '100%', background: accent, transition: 'width 200ms' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -44,22 +81,18 @@ export function Dashboard() {
   const [kpis, setKpis] = useState<KPIs | null>(null)
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [pendingCVs, setPendingCVs] = useState(0)
-  const [allCandidates, setAllCandidates] = useState<Candidate[]>([])
+  const [sources, setSources] = useState<SourceStat[]>([])
+  const [rejections, setRejections] = useState<RejectionStat[]>([])
   const [loading, setLoading] = useState(true)
-  const [salaryMap, setSalaryMap] = useState<Record<string, SalaryJobSummary>>({})
 
   useEffect(() => {
     Promise.all([
       api.analytics.kpis(),
       api.interviews.list(),
       api.candidates.list(),
-      api.salary.jobsSummary(),
-    ]).then(([kp, iv, cands, sal]) => {
-      if (sal.data) {
-        const map: Record<string, SalaryJobSummary> = {}
-        for (const s of sal.data) map[s.title] = s
-        setSalaryMap(map)
-      }
+      api.analytics.sources(),
+      api.analytics.rejections(),
+    ]).then(([kp, iv, cands, src, rej]) => {
       if (kp.data) setKpis(kp.data)
       if (iv.data) {
         const upcoming = iv.data.filter(i => isUpcoming(i.scheduled_at))
@@ -67,9 +100,10 @@ export function Dashboard() {
         setInterviews(upcoming)
       }
       if (cands.data) {
-        setAllCandidates(cands.data)
         setPendingCVs(cands.data.filter(c => c.source_type === 'upload' && c.stage === 'new').length)
       }
+      if (src.data) setSources(src.data)
+      if (rej.data) setRejections(rej.data)
       setLoading(false)
     })
   }, [])
@@ -77,26 +111,10 @@ export function Dashboard() {
   const todayInterviews = interviews.filter(i => isToday(i.scheduled_at))
   const nextInterviews  = interviews.filter(i => !isToday(i.scheduled_at)).slice(0, 5)
 
-  // Action items
-  const hotUncontacted = allCandidates.filter(c =>
-    c.qualification_score != null && c.qualification_score >= 70 &&
-    c.status !== 'contacted' && c.status !== 'rejected'
-  ).length
-  const soon24h = interviews.filter(i => {
-    const ms = new Date(i.scheduled_at).getTime() - Date.now()
-    return ms > 0 && ms <= 24 * 60 * 60 * 1000
-  }).length
-  const jobsEmpty = kpis ? kpis.byJob.filter(j => j.count === 0).length : 0
-  const todoItems = [
-    hotUncontacted > 0 && d.todoHotCandidates(hotUncontacted),
-    soon24h > 0 && d.todoInterviewsSoon(soon24h),
-    jobsEmpty > 0 && d.todoJobsEmpty(jobsEmpty),
-  ].filter(Boolean) as string[]
-
   const activeJobs   = kpis?.activeJobs ?? 0
-  const contacted    = kpis?.totalContacted ?? 0
-  const contactRate  = kpis?.contactRate ?? 0
-  const upcomingCount = interviews.length
+  const applicants   = kpis?.applicantsCount ?? 0
+  const sourced      = kpis?.sourcedCount ?? 0
+  const avgDays      = kpis?.avgDaysToFill ?? null
 
   const dateLabel = new Date().toLocaleDateString(t.locale, {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -162,20 +180,26 @@ export function Dashboard() {
           subColor={activeJobs > 0 ? 'var(--ok)' : undefined}
         />
         <KpiCard
-          value={contacted} label={k.contacted}
-          sub={contacted > 0 ? k.contactedSub : k.pending}
-          subColor={contacted > 0 ? 'var(--accent)' : undefined}
+          value={applicants} label={k.applicants}
+          sub={k.viaRobota}
+          subColor={applicants > 0 ? 'var(--accent)' : undefined}
         />
         <KpiCard
-          value={upcomingCount} label={k.upcoming}
-          sub={upcomingCount > 0 ? k.scheduled : k.noneScheduled}
-          subColor={upcomingCount > 0 ? '#2563EB' : undefined}
+          value={sourced} label={k.sourced}
+          sub={k.handPicked}
+          subColor={sourced > 0 ? '#2563EB' : undefined}
         />
         <KpiCard
-          value={`${contactRate}%`} label={k.contactRate}
-          sub={contactRate >= 60 ? k.excellent : contactRate >= 30 ? k.improve : k.low}
-          subColor={contactRate >= 60 ? 'var(--ok)' : contactRate >= 30 ? 'var(--warn)' : 'var(--err)'}
+          value={avgDays != null ? `${avgDays} ${k.days}` : '—'} label={k.timeToFill}
+          sub={avgDays != null ? '' : k.notEnoughData}
+          subColor={avgDays != null ? 'var(--ok)' : undefined}
         />
+      </div>
+
+      {/* ── Sources + Rejections ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
+        <StatList title={d.sources} items={sources.map(s => ({ label: s.source, count: s.count, percent: s.percent }))} empty={d.noSources} accent="var(--accent)" />
+        <StatList title={d.rejections} items={rejections.map(r => ({ label: r.reason || d.noRejectionReason, count: r.count }))} empty={d.noRejections} accent="var(--err)" />
       </div>
 
       {/* ── Middle row ── */}
@@ -251,28 +275,21 @@ export function Dashboard() {
 
           {kpis?.byJob && kpis.byJob.length > 0 ? (
             <div style={{ flex: 1 }}>
-              {kpis.byJob.slice(0, 5).map(row => {
-                const sal = salaryMap[row.title]
-                return (
-                  <div key={row.title} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{row.title}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', flexShrink: 0 }}>{row.count}</span>
-                    </div>
-                    {sal?.median != null ? (
-                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
-                        {t.salary.marketMedianRow}: <strong style={{ color: 'var(--text-2)' }}>{Math.round(sal.median).toLocaleString('en-US')} ₴</strong>
-                        {sal.p25 != null && sal.p75 != null && ` · ${Math.round(sal.p25 / 1000)}-${Math.round(sal.p75 / 1000)}k`}
-                        {sal.sample_size && ` · ${t.salary.cvsShort(sal.sample_size)}`}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2, fontStyle: 'italic' }}>
-                        {t.salary.notAnalyzedRow}
-                      </div>
+              {kpis.byJob.slice(0, 5).map(row => (
+                <div key={row.title} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{row.title}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', flexShrink: 0 }}>{row.count}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3, display: 'flex', gap: 8 }}>
+                    <span><strong style={{ color: 'var(--accent)' }}>{row.applicants}</strong> {d.perJobApplicants}</span>
+                    <span><strong style={{ color: 'var(--text-2)' }}>{row.sourced}</strong> {d.perJobSourced}</span>
+                    {row.rejected > 0 && (
+                      <span><strong style={{ color: 'var(--err)' }}>{row.rejected}</strong> {d.perJobRejected}</span>
                     )}
                   </div>
-                )
-              })}
+                </div>
+              ))}
             </div>
           ) : (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', textAlign: 'center', padding: '16px 0' }}>

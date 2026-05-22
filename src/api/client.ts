@@ -124,6 +124,8 @@ export const api = {
     weekly: () => req<WeeklyData[]>('/analytics/weekly'),
     recent: () => req<RecentEvent[]>('/analytics/recent'),
     searches: () => req<SearchHistory[]>('/analytics/searches'),
+    sources: () => req<SourceStat[]>('/analytics/sources'),
+    rejections: () => req<RejectionStat[]>('/analytics/rejections'),
     candidateMessages: (candidateId: number) => req<CandidateMessageEvent[]>(`/analytics/candidate-messages/${candidateId}`),
     log: (type: string, metadata?: Record<string, unknown>) =>
       req<{ success: boolean }>('/analytics/log', { method: 'POST', ...body({ type, metadata }) }),
@@ -468,8 +470,15 @@ export interface KPIs {
   totalContacted: number
   contactRate: number
   activeJobs: number
-  byJob: { title: string; count: number }[]
+  applicantsCount: number
+  sourcedCount: number
+  rejectedCount: number
+  avgDaysToFill: number | null
+  byJob: { title: string; count: number; applicants: number; sourced: number; rejected: number }[]
 }
+
+export interface SourceStat { source: string; count: number; percent: number }
+export interface RejectionStat { reason: string | null; count: number }
 
 export interface WeeklyData {
   week: string
