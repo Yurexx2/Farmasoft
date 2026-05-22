@@ -77,8 +77,12 @@ export function JobForm({ initial, onSave, onClose }: {
         work_types:      Array.isArray(d.work_types) ? JSON.stringify(d.work_types) : f.work_types,
         branch_ids:      Array.isArray(d.branch_ids) ? JSON.stringify(d.branch_ids) : f.branch_ids,
         skills:          Array.isArray(d.skills) ? JSON.stringify(d.skills) : f.skills,
+        languages:       Array.isArray(d.languages) ? JSON.stringify(d.languages) : f.languages,
         description:     (d.description as string)  ?? f.description,
         requirements:    (d.requirements as string) ?? f.requirements,
+        contact_person:  (d.contact_person as string) ?? f.contact_person,
+        contact_email:   (d.contact_email as string)  ?? f.contact_email,
+        publish_type:    (d.publish_type as string)   ?? f.publish_type,
       }))
     }
     setGenerating(false)

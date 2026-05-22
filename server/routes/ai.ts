@@ -18,37 +18,69 @@ router.post('/generate-job', async (req: Request, res: Response) => {
 
     const prompt = `${FARMASOFT_CONTEXT}
 
-Génère une fiche de poste complète et compatible robota.ua pour : "${title}"
+Tu génères une fiche de poste PRÊTE À PUBLIER sur robota.ua pour : "${title}"
 
-IMPORTANT : Tout le contenu rédactionnel (title, skills, description, requirements) doit être OBLIGATOIREMENT en ukrainien (мова: українська).
-La description doit faire MINIMUM 200 caractères (exigence robota.ua).
+CONTEXTE ENTREPRISE — ТОВ «Фармасофт» (Pharmasoft)
+- Logistique pharmaceutique en Ukraine, 25 ans sur le marché pharma, 50–250 employés.
+- Localisation: вул. Бориспільська 9, с. Велика Олександрівка, Бориспільський р-н.
+- Transport quotidien gratuit depuis les métros Лісова (20 min), Харківська (35 min),
+  ainsi que depuis Бориспіль et Бровари (20 min).
+- Horaires: Пн–Пт 09:00–17:30.
+- Emploi officiel selon le КЗпП України, salaire 2×/mois.
+
+LANGUE
+- Tout le contenu rédactionnel (title, skills, description, requirements) doit être
+  OBLIGATOIREMENT en UKRAINIEN (мова: українська).
+
+DESCRIPTION & REQUIREMENTS — règles strictes (anti-blabla)
+- Description: MINIMUM 200 caractères. CONCRÈTE et utilisable telle quelle.
+  Structure: 1-2 phrases factuelles d'intro, puis puces "• " sur les responsabilités
+  réelles du poste, puis 1-2 lignes sur les conditions (horaires Пн-Пт, navette,
+  emploi officiel, salaire 2×/mois).
+- Requirements: liste à puces "• " concrètes (compétences, expérience, outils,
+  formation). Pas de phrases vides.
+- INTERDICTION absolue du marketing creux: pas de «динамічна компанія»,
+  «командний дух», «цікаві виклики», «дружній колектив» tout seul. Du concret.
+- N'INVENTE PAS de chiffres ou avantages spécifiques (primes, bonus particuliers)
+  que tu n'as pas. Reste générique sur ce que tu ne sais pas, mais factuel.
+
+LANGUES (champ "languages")
+- Choisis selon le poste. Pour la plupart des rôles à Pharmasoft, mets [].
+- Anglais Intermediate { "id": 3, "level": 2 } UNIQUEMENT si la fonction le justifie
+  vraiment (analyste, ЗЕД, IT, contact international).
 
 Réponds UNIQUEMENT en JSON valide, structure EXACTE :
 {
   "title": "назва посади українською",
-  "location": "ville en ukrainien (Київ par défaut)",
-  "city_id": <int>,
+  "location": "Київ",
+  "city_id": 1,
   "salary_min": <int>, "salary_max": <int>,
   "experience_years": <int>,
   "experience_id": <int>,
   "education_id": <int>,
-  "schedule_id": <int>,
+  "schedule_id": 1,
   "employment_types": ["FullTime"],
   "work_types": ["Office"],
   "branch_ids": [<int>],
-  "skills": ["навичка1", "навичка2", "навичка3", "навичка4", "навичка5"],
-  "description": "опис посади українською (мінімум 200 символів)",
-  "requirements": "детальні вимоги українською (список з • )"
+  "skills": ["...", "...", "..."],
+  "languages": [],
+  "description": "опис посади українською (мінімум 200 символів, конкретний, без маркетингу)",
+  "requirements": "вимоги українською, список з • "
 }
 
-Mapping ROBOTA.UA :
+MAPPING ROBOTA.UA
 - city_id : 1=Київ, 2=Харків, 21=Львів, 3=Одеса, 4=Дніпро, 9=Запоріжжя, 10=Вінниця
-- experience_id : 0=Aucune, 1=Jusqu'à 1an, 2=1-2 ans, 3=2-5 ans, 4=Plus de 5 ans
+- experience_id : 0=Aucune, 1=Jusqu'à 1 an, 2=1-2 ans, 3=2-5 ans, 4=>5 ans
 - education_id : 0=Indifférent, 1=Secondaire, 2=Bac+2, 3=Bac+3+
 - schedule_id : 1=Temps plein, 2=Partiel, 3=À distance, 4=Maison, 5=Stage
-- employment_types : combinaison de FullTime, PartTime, ProjectBased
-- work_types : combinaison de Office, Remote, Hybrid
-- branch_ids : 1=Industrie, 2=Médical/Pharma, 3=Commerce, 4=IT, 5=Finance, 6=Logistique, 7=Marketing, 8=Construction (devine selon le poste)
+- employment_types : FullTime, PartTime, ProjectBased
+- work_types : Office, Remote, Hybrid
+- branch_ids : 1=Industrie, 2=Médical/Pharma, 3=Commerce, 4=IT, 5=Finance,
+  6=Logistique, 7=Marketing, 8=Construction.
+  Pour Pharmasoft (logistique pharma): par défaut [2, 6]; ajuste seulement si
+  le rôle est clairement autre (ex: IT → [4]).
+- languages.id : 1=Ukrainien, 2=Russe, 3=Anglais, 4=Allemand, 5=Polonais
+- languages.level : 1=Notions, 2=Moyen, 3=Avancé, 4=Courant, 5=Natif
 
 Salaires marché Ukraine 2025 :
 - Chauffeur PL : 22 000–35 000 UAH
@@ -62,7 +94,11 @@ Salaires marché Ukraine 2025 :
 - Manager : 35 000–70 000 UAH`
 
     const text = await callLLM(prompt, { jsonMode: true, timeoutMs: 30000 })
-    const parsed = JSON.parse(text)
+    const parsed = JSON.parse(text) as Record<string, unknown>
+    // Server-side defaults the LLM doesn't need to invent.
+    parsed.contact_person = 'Альона Приходько'
+    parsed.contact_email = 'alena.pryhodko@farmasoft.ua'
+    parsed.publish_type = (parsed.publish_type as string) || 'Anonym'
     res.json({ data: parsed })
   } catch (err: unknown) {
     const msg = (err as Error).message
