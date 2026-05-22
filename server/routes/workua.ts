@@ -85,6 +85,27 @@ export async function syncJobToWorkua(
   return { ok: true }
 }
 
+// ─── Auto-connect from env vars on startup ──────────────────────────────────
+// If WORKUA_LOGIN + WORKUA_PASSWORD are set in the environment and no creds
+// are saved yet, write them to the settings table and cache dictionaries.
+// Lets Alena land on a pre-connected instance without touching the UI; the
+// password never lives in git — Render holds it as an env var.
+export async function bootstrapWorkuaFromEnv(): Promise<void> {
+  if (getWorkuaCreds()) return  // already connected via UI
+  const login = process.env.WORKUA_LOGIN
+  const password = process.env.WORKUA_PASSWORD
+  if (!login || !password) return
+
+  const test = await workuaTest({ login, password })
+  if (!test.ok) { console.error('[workua bootstrap] auth failed:', test.error); return }
+
+  setSetting('workua_login', login)
+  setSetting('workua_password', password)
+  const dicts = await workuaDictionaries({ login, password })
+  if (dicts) setSetting('workua_dictionaries', JSON.stringify(dicts))
+  console.log(`[workua bootstrap] connected as ${login}`)
+}
+
 // ─── Import responses → candidates ──────────────────────────────────────────
 export async function runFullSyncWorkua(): Promise<void> {
   const creds = getWorkuaCreds()

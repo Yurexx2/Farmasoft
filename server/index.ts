@@ -23,7 +23,7 @@ import { stripHtml } from './lib/text'
 // Work.ua — public REST API (Basic Auth). The old Playwright scraper at
 // lib/workua/browser.ts is dormant; the live integration uses the official
 // API via lib/workua.ts.
-import workuaRouter, { runFullSyncWorkua } from './routes/workua'
+import workuaRouter, { runFullSyncWorkua, bootstrapWorkuaFromEnv } from './routes/workua'
 import { reloadTelegramSession } from './lib/messaging'
 import { telegramIsConnected, onTelegramInbound, onTelegramDeleted } from './lib/messaging/telegram'
 import { handleInbound, handleDeleted, recoverMissed, importAllDialogs, reconcileDeletions } from './lib/telegram-bot/bot'
@@ -148,8 +148,12 @@ app.listen(PORT, () => {
   // Pull Calendly bookings into the interviews table on boot.
   syncCalendly().catch(e => console.error('[startup calendly]', (e as Error).message))
 
-  // Pull existing work.ua responses on boot (only if connected).
-  runFullSyncWorkua().catch(e => console.error('[startup workua]', (e as Error).message))
+  // Auto-connect work.ua from env vars (WORKUA_LOGIN / WORKUA_PASSWORD) if
+  // no creds are saved yet, then pull existing responses.
+  bootstrapWorkuaFromEnv()
+    .catch(e => console.error('[startup workua bootstrap]', (e as Error).message))
+    .then(() => runFullSyncWorkua())
+    .catch(e => console.error('[startup workua]', (e as Error).message))
 
   // Route every inbound Telegram private message into the recruiting bot,
   // and mirror message deletions made in the Telegram app.
