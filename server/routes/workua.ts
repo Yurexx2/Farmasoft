@@ -173,6 +173,11 @@ export async function importWorkuaJobs(): Promise<void> {
 }
 
 // ─── Import responses → candidates ──────────────────────────────────────────
+// Work.ua's global /jobs/responses caps at 50 items and ignores pagination
+// params (last_id / offset / page all return the same set). The only way to
+// reach the historical pool is to call /jobs/{jobId}/responses for every
+// employer vacancy. With ~60 vacancies that lifts the ceiling from 50 to
+// ~3000 candidates without any extra moving part.
 export async function runFullSyncWorkua(): Promise<void> {
   const creds = getWorkuaCreds()
   if (!creds) return
@@ -181,30 +186,38 @@ export async function runFullSyncWorkua(): Promise<void> {
   await importWorkuaJobs()
 
   const db = getDb()
+  const vacancies = await workuaListMyJobs(creds)
 
   let imported = 0
-  let lastId: number | undefined
-  for (let page = 0; page < 20; page++) {
-    const { items, error } = await workuaListResponses(creds, { limit: 50, lastId })
-    if (error) { console.error('[workua sync]', error); return }
-    if (items.length === 0) break
+  let relinked = 0
+  let skipped = 0
+
+  for (const v of vacancies) {
+    const workuaJobId = typeof v.id === 'string' ? parseInt(v.id, 10) : v.id
+    if (!workuaJobId || Number.isNaN(workuaJobId)) continue
+
+    const { items, error } = await workuaListResponses(creds, { jobId: workuaJobId, limit: 50 })
+    if (error) {
+      // Blocked / deleted vacancy on work.ua — skip without aborting the loop.
+      skipped++
+      continue
+    }
+    if (items.length === 0) continue
+
+    const farmasoftJob = db.prepare('SELECT id FROM jobs WHERE workua_job_id = ?')
+      .get(workuaJobId) as { id: number } | undefined
 
     for (const r of items) {
       try {
-        const job = r.job_id
-          ? db.prepare('SELECT id FROM jobs WHERE workua_job_id = ?').get(r.job_id) as { id: number } | undefined
-          : undefined
-
         const exists = db.prepare('SELECT id, job_id FROM candidates WHERE workua_response_id = ?')
           .get(r.id) as { id: number; job_id: number | null } | undefined
         if (exists) {
-          // Older candidate inserted before workua_source_job_id existed —
-          // back-fill it now so future imports can relink without re-listing.
-          if (exists.job_id == null && (job?.id || r.job_id)) {
+          if (exists.job_id == null && farmasoftJob?.id) {
             db.prepare(`
-              UPDATE candidates SET job_id = COALESCE(?, job_id), workua_source_job_id = ?
+              UPDATE candidates SET job_id = ?, workua_source_job_id = ?
               WHERE id = ?
-            `).run(job?.id ?? null, r.job_id ?? null, exists.id)
+            `).run(farmasoftJob.id, workuaJobId, exists.id)
+            relinked++
           }
           continue
         }
@@ -217,19 +230,24 @@ export async function runFullSyncWorkua(): Promise<void> {
             workua_source_job_id, photo_url
           ) VALUES (?, ?, ?, ?, 'work.ua', 'scraped', ?, ?, '', ?, ?, ?, ?)
         `).run(
-          job?.id ?? null, initials, fullName || null, null,
+          farmasoftJob?.id ?? null, initials, fullName || null, null,
           r.email || null, r.phone || null,
-          r.id, r.candidate_id ?? null, r.job_id ?? null, r.photo || null,
+          r.id, r.candidate_id ?? null, workuaJobId, r.photo || null,
         )
         imported++
       } catch (e) {
         console.error('[workua candidate insert]', (e as Error).message)
       }
     }
-    lastId = items[items.length - 1].id
-    if (items.length < 50) break
+
+    // Stay well under the 50 req/sec rate limit (we're doing ~one call per
+    // vacancy plus the candidate inserts on the side).
+    await new Promise(r => setTimeout(r, 50))
   }
-  if (imported > 0) console.log(`[workua sync] ${imported} new candidate(s) imported`)
+
+  if (imported || relinked || skipped) {
+    console.log(`[workua sync] ${imported} imported, ${relinked} relinked, ${skipped} vacancies skipped`)
+  }
 }
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
