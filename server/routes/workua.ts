@@ -196,53 +196,62 @@ export async function runFullSyncWorkua(): Promise<void> {
     const workuaJobId = typeof v.id === 'string' ? parseInt(v.id, 10) : v.id
     if (!workuaJobId || Number.isNaN(workuaJobId)) continue
 
-    const { items, error } = await workuaListResponses(creds, { jobId: workuaJobId, limit: 50 })
-    if (error) {
-      // Blocked / deleted vacancy on work.ua — skip without aborting the loop.
-      skipped++
-      continue
-    }
-    if (items.length === 0) continue
-
     const farmasoftJob = db.prepare('SELECT id FROM jobs WHERE workua_job_id = ?')
       .get(workuaJobId) as { id: number } | undefined
 
-    for (const r of items) {
-      try {
-        const exists = db.prepare('SELECT id, job_id FROM candidates WHERE workua_response_id = ?')
-          .get(r.id) as { id: number; job_id: number | null } | undefined
-        if (exists) {
-          if (exists.job_id == null && farmasoftJob?.id) {
-            db.prepare(`
-              UPDATE candidates SET job_id = ?, workua_source_job_id = ?
-              WHERE id = ?
-            `).run(farmasoftJob.id, workuaJobId, exists.id)
-            relinked++
-          }
-          continue
-        }
-        const fullName = (r.fio || '').trim()
-        const initials = fullName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || '?'
-        db.prepare(`
-          INSERT INTO candidates (
-            job_id, initials, full_name, role, source_platform, source_type,
-            email, phone, profile_url, workua_response_id, workua_candidate_id,
-            workua_source_job_id, photo_url
-          ) VALUES (?, ?, ?, ?, 'work.ua', 'scraped', ?, ?, '', ?, ?, ?, ?)
-        `).run(
-          farmasoftJob?.id ?? null, initials, fullName || null, null,
-          r.email || null, r.phone || null,
-          r.id, r.candidate_id ?? null, workuaJobId, r.photo || null,
-        )
-        imported++
-      } catch (e) {
-        console.error('[workua candidate insert]', (e as Error).message)
-      }
-    }
+    // Paginate backwards with before_id until the API 404s (no older pages).
+    // Cap at 50 pages (= 2500 responses) per vacancy as a safety net.
+    let beforeId: number | undefined
+    let pageError = false
+    for (let page = 0; page < 50; page++) {
+      const { items, error } = await workuaListResponses(creds, {
+        jobId: workuaJobId, limit: 50, beforeId,
+      })
+      if (error) { pageError = true; break }
+      if (items.length === 0) break
 
-    // Stay well under the 50 req/sec rate limit (we're doing ~one call per
-    // vacancy plus the candidate inserts on the side).
-    await new Promise(r => setTimeout(r, 50))
+      for (const r of items) {
+        try {
+          const exists = db.prepare('SELECT id, job_id FROM candidates WHERE workua_response_id = ?')
+            .get(r.id) as { id: number; job_id: number | null } | undefined
+          if (exists) {
+            if (exists.job_id == null && farmasoftJob?.id) {
+              db.prepare(`
+                UPDATE candidates SET job_id = ?, workua_source_job_id = ?
+                WHERE id = ?
+              `).run(farmasoftJob.id, workuaJobId, exists.id)
+              relinked++
+            }
+            continue
+          }
+          const fullName = (r.fio || '').trim()
+          const initials = fullName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || '?'
+          db.prepare(`
+            INSERT INTO candidates (
+              job_id, initials, full_name, role, source_platform, source_type,
+              email, phone, profile_url, workua_response_id, workua_candidate_id,
+              workua_source_job_id, photo_url
+            ) VALUES (?, ?, ?, ?, 'work.ua', 'scraped', ?, ?, '', ?, ?, ?, ?)
+          `).run(
+            farmasoftJob?.id ?? null, initials, fullName || null, null,
+            r.email || null, r.phone || null,
+            r.id, r.candidate_id ?? null, workuaJobId, r.photo || null,
+          )
+          imported++
+        } catch (e) {
+          console.error('[workua candidate insert]', (e as Error).message)
+        }
+      }
+
+      // The last item is the oldest of this page (items are sorted id-DESC).
+      // Use it as the pivot for the next call so we walk strictly older.
+      beforeId = items[items.length - 1].id
+      if (items.length < 50) break
+
+      // 50 ms between pages — stays well under work.ua's 50 req/sec limit.
+      await new Promise(r => setTimeout(r, 50))
+    }
+    if (pageError) skipped++
   }
 
   if (imported || relinked || skipped) {

@@ -186,18 +186,20 @@ export interface WorkuaResponse {
 }
 
 export async function workuaListResponses(
-  creds: WorkuaCreds, opts: { jobId?: number; lastId?: number; limit?: number } = {},
+  creds: WorkuaCreds,
+  opts: { jobId?: number; lastId?: number; beforeId?: number; limit?: number } = {},
 ): Promise<{ items: WorkuaResponse[]; error?: string }> {
   try {
     const limit = Math.min(opts.limit ?? 50, 50)
     const path = opts.jobId ? `/jobs/${opts.jobId}/responses` : '/jobs/responses'
     const params: Record<string, unknown> = { limit }
-    if (opts.lastId) params.last_id = opts.lastId
+    if (opts.lastId) params.last_id = opts.lastId        // incremental — id > lastId
+    if (opts.beforeId) params.before_id = opts.beforeId  // historical — id < beforeId
     const { data } = await axios.get(`${API}${path}`, authConfig(creds, { params }))
     return { items: (data?.items ?? []) as WorkuaResponse[] }
   } catch (e) {
     const err = e as AxiosError
-    if (err.response?.status === 404) return { items: [] }   // no responses yet — normal
+    if (err.response?.status === 404) return { items: [] }   // no more pages — normal
     return { items: [], error: explain(e) }
   }
 }
